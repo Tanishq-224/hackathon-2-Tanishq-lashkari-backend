@@ -179,9 +179,13 @@ export async function loginUser(
   }
 
   if (!user.emailVerified) {
-    await issueOtp(normalized, 'signup')
+    try {
+      await issueOtp(normalized, 'signup')
+    } catch {
+      // Cooldown active; existing OTP challenge remains valid
+    }
     throw new AppError(
-      'Verify your email first. We sent a new 6-digit code to your inbox.',
+      'Verify your email first. Enter the 6-digit code sent to your inbox.',
       403,
     )
   }
