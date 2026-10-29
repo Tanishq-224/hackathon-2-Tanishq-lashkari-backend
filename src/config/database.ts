@@ -11,13 +11,20 @@ import { env } from './env.js'
 export async function connectDatabase(): Promise<void> {
   if (!env.MONGODB_URI) {
     console.warn(
-      '[database] MONGODB_URI is not set — skipping MongoDB connection.',
+      '[database] MONGODB_URI is not set — running in in-memory mode.',
     )
     return
   }
 
-  await mongoose.connect(env.MONGODB_URI)
-  console.info('[database] Connected to MongoDB.')
+  try {
+    const conn = await mongoose.connect(env.MONGODB_URI)
+    console.info(
+      `[database] Connected to MongoDB: ${conn.connection.host}/${conn.connection.name}`,
+    )
+  } catch (error) {
+    console.error('[database] Failed to connect to MongoDB:', error)
+    throw error
+  }
 }
 
 /**

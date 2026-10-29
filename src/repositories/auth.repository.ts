@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 
 import mongoose from 'mongoose'
 
+import { OtpModel } from '../models/Otp.model.js'
 import { UserModel, type UserDocument } from '../models/User.model.js'
 
 export type UserRole = 'customer' | 'vendor'
@@ -149,7 +150,7 @@ export async function markEmailVerified(
   const doc = await UserModel.findByIdAndUpdate(
     userId,
     { emailVerified: true },
-    { new: true },
+    { returnDocument: 'after' },
   )
   return doc ? fromMongo(doc) : null
 }
@@ -179,7 +180,7 @@ export async function updateUserPasswordHash(
   const doc = await UserModel.findByIdAndUpdate(
     userId,
     { passwordHash },
-    { new: true },
+    { returnDocument: 'after' },
   )
   return doc ? fromMongo(doc) : null
 }
@@ -196,12 +197,23 @@ export async function saveOtpChallenge(input: {
   hash: string
   expiresAt: Date
 }): Promise<void> {
-  const key = otpKey(input.email, input.purpose)
-  memoryOtps.set(key, {
-    hash: input.hash,
-    expiresAt: input.expiresAt,
-    purpose: input.purpose,
-  })
+  const normalized = input.email.toLowerCase().trim()
+
+  if (isMemoryAuthStore()) {
+    const key = otpKey(normalized, input.purpose)
+    memoryOtps.set(key, {
+      hash: input.hash,
+      expiresAt: input.expiresAt,
+      purpose: input.purpose,
+    })
+    return
+  }
+
+  await OtpModel.findOneAndUpdate(
+    { email: normalized, purpose: input.purpose },
+    { hash: input.hash, expiresAt: input.expiresAt },
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
+  )
 }
 
 /**
@@ -215,16 +227,34 @@ export async function getOtpChallenge(
   email: string,
   purpose: OtpPurpose,
 ): Promise<MemoryOtp | null> {
-  const key = otpKey(email, purpose)
-  const record = memoryOtps.get(key)
-  if (!record) {
+  const normalized = email.toLowerCase().trim()
+
+  if (isMemoryAuthStore()) {
+    const key = otpKey(normalized, purpose)
+    const record = memoryOtps.get(key)
+    if (!record) {
+      return null
+    }
+    if (record.expiresAt.getTime() < Date.now()) {
+      memoryOtps.delete(key)
+      return null
+    }
+    return record
+  }
+
+  const doc = await OtpModel.findOne({ email: normalized, purpose })
+  if (!doc) {
     return null
   }
-  if (record.expiresAt.getTime() < Date.now()) {
-    memoryOtps.delete(key)
+  if (doc.expiresAt.getTime() < Date.now()) {
+    await OtpModel.deleteOne({ _id: doc._id })
     return null
   }
-  return record
+  return {
+    hash: doc.hash,
+    expiresAt: doc.expiresAt,
+    purpose: doc.purpose as OtpPurpose,
+  }
 }
 
 /**
@@ -238,7 +268,14 @@ export async function deleteOtpChallenge(
   email: string,
   purpose: OtpPurpose,
 ): Promise<void> {
-  memoryOtps.delete(otpKey(email, purpose))
+  const normalized = email.toLowerCase().trim()
+
+  if (isMemoryAuthStore()) {
+    memoryOtps.delete(otpKey(normalized, purpose))
+    return
+  }
+
+  await OtpModel.deleteOne({ email: normalized, purpose })
 }
 
 /**

@@ -1,5 +1,14 @@
-import 'dotenv/config'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import dotenv from 'dotenv'
 import { z } from 'zod'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// Load .env from cwd first, fallback to package root
+dotenv.config({ quiet: true })
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true })
 
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
 
@@ -8,7 +17,7 @@ const envSchema = z.object({
     .enum(['development', 'test', 'production'])
     .default('development'),
   PORT: z.coerce.number().int().positive().default(5000),
-  MONGODB_URI: z.preprocess(emptyToUndefined, z.string().url().optional()),
+  MONGODB_URI: z.preprocess(emptyToUndefined, z.string().optional()),
   CLIENT_URL: z.string().url().default('http://localhost:5173'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
@@ -25,10 +34,13 @@ const envSchema = z.object({
   ),
   SMTP_USER: z.preprocess(emptyToUndefined, z.string().optional()),
   SMTP_PASS: z.preprocess(emptyToUndefined, z.string().optional()),
-  SMTP_FROM: z.preprocess(emptyToUndefined, z.string().email().optional()),
+  SMTP_FROM: z.preprocess(emptyToUndefined, z.string().optional()),
   GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   GOOGLE_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
-  GOOGLE_CALLBACK_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
+  GOOGLE_CALLBACK_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+  CLOUDINARY_CLOUD_NAME: z.preprocess(emptyToUndefined, z.string().optional()),
+  CLOUDINARY_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  CLOUDINARY_API_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
 })
 
 export type Env = z.infer<typeof envSchema>
