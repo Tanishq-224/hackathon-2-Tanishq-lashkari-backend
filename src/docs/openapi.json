@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Repairex API",
-    "version": "0.1.0",
-    "description": "Smart electronics repair marketplace backend (Phase 0 foundation)."
+    "version": "0.2.0",
+    "description": "Smart electronics repair marketplace backend (Authentication, Contact & Public API)."
   },
   "servers": [
     { "url": "http://localhost:5000", "description": "Local development" }
@@ -34,6 +34,158 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/contact": {
+      "post": {
+        "summary": "Submit a public contact message",
+        "tags": ["Public"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["fullName", "email", "topic", "message"],
+                "properties": {
+                  "fullName": { "type": "string", "example": "Alex Doe" },
+                  "email": { "type": "string", "example": "alex@example.com" },
+                  "phone": { "type": "string", "example": "+1 555-0100" },
+                  "topic": {
+                    "type": "string",
+                    "enum": ["repair-request", "vendor-inquiry", "support", "general"],
+                    "example": "repair-request"
+                  },
+                  "message": { "type": "string", "example": "Need my iPhone screen replaced." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Message received"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/api/auth/signup": {
+      "post": {
+        "summary": "Register a new user and dispatch email OTP",
+        "tags": ["Auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["fullName", "email", "password", "confirmPassword", "role"],
+                "properties": {
+                  "fullName": { "type": "string", "example": "Andrew Thomas" },
+                  "email": { "type": "string", "example": "andrew@example.com" },
+                  "password": { "type": "string", "example": "Password123!" },
+                  "confirmPassword": { "type": "string", "example": "Password123!" },
+                  "role": { "type": "string", "enum": ["customer", "vendor"], "example": "customer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Verification OTP sent" },
+          "400": { "description": "Invalid input" },
+          "409": { "description": "Email already in use" }
+        }
+      }
+    },
+    "/api/auth/verify-otp": {
+      "post": {
+        "summary": "Verify email OTP and establish HTTP-only session",
+        "tags": ["Auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "otp"],
+                "properties": {
+                  "email": { "type": "string", "example": "andrew@example.com" },
+                  "otp": { "type": "string", "example": "123456" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Email verified and session established" },
+          "400": { "description": "Invalid or expired OTP" }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "Log in with email and password",
+        "tags": ["Auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "example": "andrew@example.com" },
+                  "password": { "type": "string", "example": "Password123!" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Logged in successfully" },
+          "401": { "description": "Invalid credentials or unverified email" }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "summary": "Get authenticated user from session cookie",
+        "tags": ["Auth"],
+        "responses": {
+          "200": { "description": "Current user profile" },
+          "401": { "description": "Not authenticated" }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Clear session cookie",
+        "tags": ["Auth"],
+        "responses": {
+          "200": { "description": "Logged out" }
+        }
+      }
+    },
+    "/api/auth/google": {
+      "get": {
+        "summary": "Initiate Google OAuth flow",
+        "tags": ["Auth"],
+        "responses": {
+          "302": { "description": "Redirect to Google authorization endpoint" }
+        }
+      }
+    },
+    "/api/auth/google/callback": {
+      "get": {
+        "summary": "Google OAuth authorization callback",
+        "tags": ["Auth"],
+        "responses": {
+          "302": { "description": "Session established and redirected to dashboard" }
         }
       }
     }
