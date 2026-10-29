@@ -280,6 +280,94 @@
           "401": { "description": "Not authenticated" }
         }
       }
+    },
+    "/api/marketplace/repairs": {
+      "get": {
+        "summary": "Browse open customer repair requests available for estimation (Vendor only)",
+        "tags": ["Marketplace"],
+        "parameters": [
+          { "name": "deviceType", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "urgency", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "List of open repair requests" },
+          "401": { "description": "Not authenticated" },
+          "403": { "description": "Forbidden (Vendor only)" }
+        }
+      }
+    },
+    "/api/repairs/{id}/estimates": {
+      "get": {
+        "summary": "Get all estimates submitted for a repair request",
+        "tags": ["Estimates"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "List of estimates" },
+          "401": { "description": "Not authenticated" },
+          "403": { "description": "Forbidden" }
+        }
+      },
+      "post": {
+        "summary": "Submit a repair estimate (Vendor only)",
+        "tags": ["Estimates"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["minCost", "maxCost", "turnaroundTime", "notes"],
+                "properties": {
+                  "minCost": { "type": "number", "example": 80 },
+                  "maxCost": { "type": "number", "example": 120 },
+                  "turnaroundTime": { "type": "string", "example": "24 Hours" },
+                  "warrantyMonths": { "type": "number", "example": 6 },
+                  "notes": { "type": "string", "example": "OEM replacement screen with 6 months warranty." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Estimate submitted successfully" },
+          "400": { "description": "Invalid input or request closed" },
+          "409": { "description": "Vendor has already submitted an estimate" }
+        }
+      }
+    },
+    "/api/repairs/{id}/select-estimate": {
+      "post": {
+        "summary": "Accept an estimate and assign vendor to ticket (Customer only)",
+        "tags": ["Estimates"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["estimateId"],
+                "properties": {
+                  "estimateId": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Estimate accepted, vendor assigned, and status advanced to vendor_selected" },
+          "400": { "description": "Vendor already assigned or request closed" },
+          "403": { "description": "Forbidden (Only ticket owner customer can select)" },
+          "404": { "description": "Estimate not found" }
+        }
+      }
     }
   }
 }

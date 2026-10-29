@@ -105,6 +105,20 @@ const repairRequestSchema = new Schema(
     },
     estimatedBudgetMin: { type: Number, required: false },
     estimatedBudgetMax: { type: Number, required: false },
+    assignedVendorId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
+      index: true,
+    },
+    assignedVendorName: { type: String, required: false },
+    acceptedEstimateId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Estimate',
+      required: false,
+    },
+    acceptedCostMin: { type: Number, required: false },
+    acceptedCostMax: { type: Number, required: false },
   },
   { timestamps: true },
 )

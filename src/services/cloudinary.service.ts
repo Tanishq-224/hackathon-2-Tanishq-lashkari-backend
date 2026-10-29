@@ -32,8 +32,8 @@ export type UploadedImageResult = {
 export async function uploadRepairImage(
   dataUri: string,
 ): Promise<UploadedImageResult> {
-  if (!isConfigured) {
-    // Development fallback when Cloudinary credentials are not set
+  if (!isConfigured || env.NODE_ENV === 'test') {
+    // Development & test fallback when Cloudinary credentials are not set or in test runner
     const fallbackId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
     return {
       url: dataUri.startsWith('data:')
