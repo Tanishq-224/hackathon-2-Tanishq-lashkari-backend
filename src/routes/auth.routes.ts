@@ -4,6 +4,7 @@ import { asyncHandler } from '../utils/asyncHandler.js'
 
 import {
   forgotPasswordSchema,
+  googleAuthSchema,
   loginSchema,
   resetPasswordSchema,
   signupSchema,
@@ -20,6 +21,7 @@ import {
   signSessionToken,
   verifySignupOtp,
 } from '../services/auth.service.js'
+import { verifyGoogleIdToken } from '../services/googleAuth.service.js'
 import { verifySessionToken } from '../services/session.service.js'
 import { AppError } from '../utils/AppError.js'
 import {
@@ -203,6 +205,47 @@ authRouter.post(
 
   const result = await resendOtp(parsed.data.email, parsed.data.purpose)
   res.json({ success: true, ...result })
+  }),
+)
+
+/**
+ * @description Verifies Google Identity Services ID token (credential), handles account linking safely, and sets session cookie.
+ */
+authRouter.post(
+  '/google',
+  asyncHandler(async (req, res) => {
+    const parsed = googleAuthSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      throw new AppError(issue?.message ?? 'Invalid Google authentication payload.', 400)
+    }
+
+    const verified = await verifyGoogleIdToken(parsed.data.credential)
+
+    const user = await findOrCreateGoogleUser({
+      fullName: verified.name,
+      email: verified.email,
+      googleId: verified.googleId,
+    })
+
+    const sessionPayload = {
+      sub: user.id,
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    }
+
+    const token = signSessionToken(sessionPayload)
+
+    res
+      .cookie(getSessionCookieName(), token, getSessionCookieOptions())
+      .status(200)
+      .json({
+        success: true,
+        message: 'Google sign-in successful.',
+        data: { user: sessionPayload },
+      })
   }),
 )
 

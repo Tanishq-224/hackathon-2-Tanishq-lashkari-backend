@@ -47,8 +47,16 @@ export const resetPasswordSchema = z
     path: ['confirmPassword'],
   })
 
+export const googleAuthSchema = z.object({
+  credential: z
+    .string()
+    .trim()
+    .min(10, 'Valid Google credential token is required.'),
+})
+
 export type SignupInput = z.infer<typeof signupSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>
+export type GoogleAuthInput = z.infer<typeof googleAuthSchema>

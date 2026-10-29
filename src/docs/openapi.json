@@ -172,8 +172,34 @@
       }
     },
     "/api/auth/google": {
+      "post": {
+        "summary": "Authenticate using Google Identity Services ID token (credential)",
+        "tags": ["Auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["credential"],
+                "properties": {
+                  "credential": {
+                    "type": "string",
+                    "description": "Cryptographically signed JWT ID token from Google Identity Services"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Google authentication successful, session cookie set" },
+          "400": { "description": "Invalid payload or unverified Google email" },
+          "401": { "description": "Invalid, expired, or audience-mismatched token" }
+        }
+      },
       "get": {
-        "summary": "Initiate Google OAuth flow",
+        "summary": "Initiate Google OAuth redirect flow (fallback)",
         "tags": ["Auth"],
         "responses": {
           "302": { "description": "Redirect to Google authorization endpoint" }

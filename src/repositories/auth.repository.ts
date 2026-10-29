@@ -14,6 +14,7 @@ export type AuthUserRecord = {
   passwordHash: string
   role: UserRole
   emailVerified: boolean
+  googleId?: string
 }
 
 export type OtpPurpose = 'signup' | 'reset'
@@ -67,6 +68,7 @@ function fromMongo(doc: UserDocument): AuthUserRecord {
     passwordHash: doc.passwordHash ?? '',
     role: doc.role as UserRole,
     emailVerified: doc.emailVerified,
+    googleId: doc.googleId ?? undefined,
   }
 }
 
@@ -279,7 +281,31 @@ export async function deleteOtpChallenge(
 }
 
 /**
- * @description Finds existing account by email or creates a verified Google OAuth account.
+ * @description Finds a user by their linked Google sub ID.
+ * @async
+ * @param {string} googleId - Google subject identifier.
+ * @returns {Promise<AuthUserRecord | null>} User record or null.
+ */
+export async function findUserByGoogleId(
+  googleId: string,
+): Promise<AuthUserRecord | null> {
+  if (isMemoryAuthStore()) {
+    return (
+      Array.from(memoryUsers.values()).find((u) => u.googleId === googleId) ??
+      null
+    )
+  }
+
+  const doc = await UserModel.findOne({ googleId })
+  return doc ? fromMongo(doc) : null
+}
+
+/**
+ * @description Finds existing account by googleId or verified email, or creates a new Google user.
+ * Safely handles account linking:
+ * - If googleId matches: returns linked user.
+ * - If email matches: links googleId and marks email verified (since Google cryptographically verified it).
+ * - If user does not exist: creates new verified customer account with googleId.
  * @async
  * @param {object} input - Google profile attributes.
  * @returns {Promise<AuthUserRecord>} User auth record.
@@ -291,15 +317,35 @@ export async function findOrCreateGoogleUser(input: {
 }): Promise<AuthUserRecord> {
   const normalized = input.email.toLowerCase().trim()
 
-  const existing = await findUserByEmail(normalized)
-  if (existing) {
-    if (!existing.emailVerified) {
-      await markEmailVerified(existing.id)
-      existing.emailVerified = true
-    }
-    return existing
+  // 1. Check if user with this googleId already exists
+  const existingByGoogleId = await findUserByGoogleId(input.googleId)
+  if (existingByGoogleId) {
+    return existingByGoogleId
   }
 
+  // 2. Check if user with this email exists
+  const existingByEmail = await findUserByEmail(normalized)
+  if (existingByEmail) {
+    // Safely link Google ID to existing verified account
+    if (isMemoryAuthStore()) {
+      const updated = {
+        ...existingByEmail,
+        googleId: input.googleId,
+        emailVerified: true,
+      }
+      memoryUsers.set(normalized, updated)
+      return updated
+    }
+
+    const doc = await UserModel.findByIdAndUpdate(
+      existingByEmail.id,
+      { googleId: input.googleId, emailVerified: true },
+      { returnDocument: 'after' },
+    )
+    return doc ? fromMongo(doc) : existingByEmail
+  }
+
+  // 3. User does not exist, create new verified user
   if (isMemoryAuthStore()) {
     const record: AuthUserRecord = {
       id: crypto.randomUUID(),
@@ -308,6 +354,7 @@ export async function findOrCreateGoogleUser(input: {
       passwordHash: '',
       role: 'customer',
       emailVerified: true,
+      googleId: input.googleId,
     }
     memoryUsers.set(normalized, record)
     return record
