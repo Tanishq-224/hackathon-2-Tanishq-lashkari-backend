@@ -477,6 +477,43 @@
           "403": { "description": "Forbidden (Only ticket customer can decide)" }
         }
       }
+    },
+    "/api/repairs/{id}/repair-work/start": {
+      "post": {
+        "summary": "Vendor starts repair work (quote_approved → in_repair)",
+        "tags": ["Repairs"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Repair work started" },
+          "403": { "description": "Only assigned vendor" }
+        }
+      }
+    },
+    "/api/repairs/{id}/repair-work/completion": {
+      "post": {
+        "summary": "Vendor submits after-repair proof (in_repair → ready_for_pickup)",
+        "tags": ["Repairs"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Completion proof saved" }
+        }
+      }
+    },
+    "/api/repairs/{id}/repair-work/confirm-pickup": {
+      "post": {
+        "summary": "Customer confirms pickup (ready_for_pickup → completed)",
+        "tags": ["Repairs"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Ticket closed as completed" }
+        }
+      }
     }
   }
 }

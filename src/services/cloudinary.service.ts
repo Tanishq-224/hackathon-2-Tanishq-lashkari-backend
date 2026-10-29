@@ -24,6 +24,36 @@ export type UploadedImageResult = {
 }
 
 /**
+ * @description Builds a local fallback result when Cloudinary is unavailable.
+ * @param {string} dataUri - Original base64 data URI from the client.
+ * @returns {UploadedImageResult} Fallback attachment metadata.
+ */
+function localImageFallback(dataUri: string): UploadedImageResult {
+  const fallbackId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+  return {
+    url: dataUri.startsWith('data:')
+      ? dataUri
+      : `https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80`,
+    publicId: fallbackId,
+  }
+}
+
+/**
+ * @description Normalizes Cloudinary SDK errors into a readable string.
+ * @param {unknown} error - Thrown value from the SDK.
+ * @returns {string} Human-readable message.
+ */
+function formatCloudinaryError(error: unknown): string {
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = (error as { message: unknown }).message
+    if (typeof msg === 'string' && msg.length > 0) {
+      return msg
+    }
+  }
+  return error instanceof Error ? error.message : String(error)
+}
+
+/**
  * @description Uploads an image (base64 Data URI) to Cloudinary or returns fallback for dev/testing.
  * @async
  * @param {string} dataUri - Base64 encoded image string (data:image/...;base64,...).
@@ -33,14 +63,7 @@ export async function uploadRepairImage(
   dataUri: string,
 ): Promise<UploadedImageResult> {
   if (!isConfigured || env.NODE_ENV === 'test') {
-    // Development & test fallback when Cloudinary credentials are not set or in test runner
-    const fallbackId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
-    return {
-      url: dataUri.startsWith('data:')
-        ? dataUri
-        : `https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80`,
-      publicId: fallbackId,
-    }
+    return localImageFallback(dataUri)
   }
 
   try {
@@ -58,9 +81,21 @@ export async function uploadRepairImage(
       publicId: res.public_id,
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = formatCloudinaryError(error)
     console.error('[cloudinary:error] Failed to upload image:', message)
-    throw new Error('Image upload failed. Please try again.')
+
+    if (env.NODE_ENV === 'development') {
+      console.warn(
+        `[cloudinary:dev-fallback] Using inline image for local dev. Check CLOUDINARY_CLOUD_NAME / API keys in .env — ${message}`,
+      )
+      return localImageFallback(dataUri)
+    }
+
+    throw new Error(
+      message.includes('cloud_name')
+        ? `Image upload failed: ${message}. Verify CLOUDINARY_CLOUD_NAME in your server environment.`
+        : 'Image upload failed. Please try again.',
+    )
   }
 }
 

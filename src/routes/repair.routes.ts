@@ -20,8 +20,8 @@ import {
 import { uploadRepairImage } from '../services/cloudinary.service.js'
 import {
   createCustomerRepairRequest,
-  getCustomerRepairRequests,
   getRepairRequestDetails,
+  getRepairRequestsForUser,
 } from '../services/repair.service.js'
 import {
   getRepairEstimates,
@@ -29,10 +29,19 @@ import {
   submitVendorEstimate,
 } from '../services/estimate.service.js'
 import {
+  confirmRepairPickup,
+  startRepairWork,
+  submitRepairCompletionProof,
+} from '../services/repairCompletion.service.js'
+import {
   decideQuotation,
   getQuotationForRepair,
   submitDiagnosticQuotation,
 } from '../services/quotation.service.js'
+import {
+  startRepairWorkSchema,
+  submitRepairCompletionSchema,
+} from '../schemas/repairCompletion.schema.js'
 import { AppError } from '../utils/AppError.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 
@@ -84,13 +93,17 @@ repairRouter.post(
 )
 
 /**
- * @description Get all repair requests for current authenticated customer.
+ * @description List repair tickets for the current user (customer-owned or vendor-assigned).
  */
 repairRouter.get(
   '/',
-  requireRole('customer'),
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const repairs = await getCustomerRepairRequests(req.user!.id)
+    const user = req.user!
+    if (user.role !== 'customer' && user.role !== 'vendor') {
+      throw new AppError('Forbidden. Access restricted to customers and vendors.', 403)
+    }
+
+    const repairs = await getRepairRequestsForUser(user)
     res.status(200).json({
       success: true,
       data: { repairs },
@@ -262,6 +275,84 @@ repairRouter.post(
     }
 
     const result = await decideQuotation(req.user!, id, parsed.data)
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: result.message,
+    })
+  }),
+)
+
+/**
+ * @description Vendor starts physical repair work after customer quote approval.
+ */
+repairRouter.post(
+  '/:id/repair-work/start',
+  requireRole('vendor'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const rawId = req.params.id
+    const id = Array.isArray(rawId) ? rawId[0] : rawId
+    if (!id) {
+      throw new AppError('Repair ID is required.', 400)
+    }
+
+    const parsed = startRepairWorkSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      throw new AppError(issue?.message ?? 'Invalid repair start payload.', 400)
+    }
+
+    const result = await startRepairWork(req.user!, id, parsed.data)
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: result.message,
+    })
+  }),
+)
+
+/**
+ * @description Vendor uploads after-repair proof and marks device ready for pickup.
+ */
+repairRouter.post(
+  '/:id/repair-work/completion',
+  requireRole('vendor'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const rawId = req.params.id
+    const id = Array.isArray(rawId) ? rawId[0] : rawId
+    if (!id) {
+      throw new AppError('Repair ID is required.', 400)
+    }
+
+    const parsed = submitRepairCompletionSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      throw new AppError(issue?.message ?? 'Invalid completion payload.', 400)
+    }
+
+    const result = await submitRepairCompletionProof(req.user!, id, parsed.data)
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: result.message,
+    })
+  }),
+)
+
+/**
+ * @description Customer confirms pickup and closes the repair ticket.
+ */
+repairRouter.post(
+  '/:id/repair-work/confirm-pickup',
+  requireRole('customer'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const rawId = req.params.id
+    const id = Array.isArray(rawId) ? rawId[0] : rawId
+    if (!id) {
+      throw new AppError('Repair ID is required.', 400)
+    }
+
+    const result = await confirmRepairPickup(req.user!, id)
     res.status(200).json({
       success: true,
       data: result,

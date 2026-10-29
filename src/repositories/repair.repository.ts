@@ -35,6 +35,9 @@ export type RepairRecord = {
   acceptedCostMax?: number
   quotationId?: string
   finalApprovedAmount?: number
+  repairBenchNotes?: string
+  afterRepairImages: ImageAttachment[]
+  resolutionSummary?: string
   createdAt: string
   updatedAt: string
 }
@@ -86,6 +89,12 @@ function fromMongo(doc: RepairRequestDocument): RepairRecord {
     acceptedCostMax: doc.acceptedCostMax ?? undefined,
     quotationId: doc.quotationId ? doc.quotationId.toString() : undefined,
     finalApprovedAmount: doc.finalApprovedAmount ?? undefined,
+    repairBenchNotes: doc.repairBenchNotes ?? undefined,
+    afterRepairImages: (doc.afterRepairImages || []).map((img) => ({
+      url: img.url,
+      publicId: img.publicId ?? undefined,
+    })),
+    resolutionSummary: doc.resolutionSummary ?? undefined,
     createdAt: (doc as unknown as { createdAt: Date }).createdAt?.toISOString() || new Date().toISOString(),
     updatedAt: (doc as unknown as { updatedAt: Date }).updatedAt?.toISOString() || new Date().toISOString(),
   }
@@ -125,6 +134,7 @@ export async function createRepairRequest(input: {
       status: 'submitted',
       estimatedBudgetMin: input.estimatedBudgetMin,
       estimatedBudgetMax: input.estimatedBudgetMax,
+      afterRepairImages: [],
       createdAt: now,
       updatedAt: now,
     }
@@ -167,6 +177,28 @@ export async function findRepairRequestsByCustomer(
   const docs = await RepairRequestModel.find({
     customerId: new mongoose.Types.ObjectId(customerId),
   }).sort({ createdAt: -1 })
+
+  return docs.map(fromMongo)
+}
+
+/**
+ * @description Finds repair tickets assigned to a specific vendor (post customer selection).
+ * @async
+ * @param {string} vendorId - Assigned vendor user ID.
+ * @returns {Promise<RepairRecord[]>} Assigned repairs ordered by latest update first.
+ */
+export async function findRepairRequestsByAssignedVendor(
+  vendorId: string,
+): Promise<RepairRecord[]> {
+  if (isMemoryStore()) {
+    return Array.from(memoryRepairs.values())
+      .filter((r) => r.assignedVendorId === vendorId)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  }
+
+  const docs = await RepairRequestModel.find({
+    assignedVendorId: new mongoose.Types.ObjectId(vendorId),
+  }).sort({ updatedAt: -1 })
 
   return docs.map(fromMongo)
 }
@@ -388,6 +420,123 @@ export async function updateRepairQuotationDecision(
   const doc = await RepairRequestModel.findByIdAndUpdate(
     id,
     update,
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}
+
+/**
+ * @description Marks repair as in progress after customer quote approval.
+ * @async
+ */
+export async function startRepairWorkOnTicket(
+  id: string,
+  repairBenchNotes?: string,
+): Promise<RepairRecord | null> {
+  const now = new Date().toISOString()
+
+  if (isMemoryStore()) {
+    const existing = memoryRepairs.get(id)
+    if (!existing) return null
+    const updated: RepairRecord = {
+      ...existing,
+      status: 'in_repair',
+      repairBenchNotes: repairBenchNotes ?? existing.repairBenchNotes,
+      updatedAt: now,
+    }
+    memoryRepairs.set(id, updated)
+    return updated
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return null
+  }
+
+  const update: Record<string, unknown> = { status: 'in_repair' }
+  if (repairBenchNotes) {
+    update.repairBenchNotes = repairBenchNotes
+  }
+
+  const doc = await RepairRequestModel.findByIdAndUpdate(id, update, {
+    returnDocument: 'after',
+  })
+
+  return doc ? fromMongo(doc) : null
+}
+
+/**
+ * @description Saves after-repair proof photos and advances status to ready_for_pickup.
+ * @async
+ */
+export async function markRepairReadyForPickup(
+  id: string,
+  payload: {
+    afterRepairImages: ImageAttachment[]
+    resolutionSummary: string
+  },
+): Promise<RepairRecord | null> {
+  const now = new Date().toISOString()
+
+  if (isMemoryStore()) {
+    const existing = memoryRepairs.get(id)
+    if (!existing) return null
+    const updated: RepairRecord = {
+      ...existing,
+      status: 'ready_for_pickup',
+      afterRepairImages: payload.afterRepairImages,
+      resolutionSummary: payload.resolutionSummary,
+      updatedAt: now,
+    }
+    memoryRepairs.set(id, updated)
+    return updated
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return null
+  }
+
+  const doc = await RepairRequestModel.findByIdAndUpdate(
+    id,
+    {
+      status: 'ready_for_pickup',
+      afterRepairImages: payload.afterRepairImages,
+      resolutionSummary: payload.resolutionSummary,
+    },
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}
+
+/**
+ * @description Customer pickup confirmation — final completed status.
+ * @async
+ */
+export async function markRepairCompletedByCustomer(
+  id: string,
+): Promise<RepairRecord | null> {
+  const now = new Date().toISOString()
+
+  if (isMemoryStore()) {
+    const existing = memoryRepairs.get(id)
+    if (!existing) return null
+    const updated: RepairRecord = {
+      ...existing,
+      status: 'completed',
+      updatedAt: now,
+    }
+    memoryRepairs.set(id, updated)
+    return updated
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return null
+  }
+
+  const doc = await RepairRequestModel.findByIdAndUpdate(
+    id,
+    { status: 'completed' },
     { returnDocument: 'after' },
   )
 

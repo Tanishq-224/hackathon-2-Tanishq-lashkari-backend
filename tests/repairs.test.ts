@@ -140,6 +140,55 @@ describe('Repair Requests API (Phase 3)', () => {
     expect(unauthorizedRes.body.message).toMatch(/not authorized/i)
   })
 
+  it('lists assigned repairs for vendors after customer selects their estimate', async () => {
+    const app = createApp()
+    const customerCookie = await createVerifiedUser(app, 'cust-vendor-list@example.com', 'customer')
+    const vendorCookie = await createVerifiedUser(app, 'vendor-list@example.com', 'vendor')
+
+    const createRes = await request(app)
+      .post('/api/repairs')
+      .set('Cookie', customerCookie)
+      .send({
+        deviceType: 'tablet',
+        brand: 'Samsung',
+        modelName: 'Galaxy Tab S8',
+        issueCategory: 'screen',
+        description: 'Display has hairline cracks along the bezel.',
+      })
+      .expect(201)
+
+    const repairId = createRes.body.data.repair.id
+
+    const estimateRes = await request(app)
+      .post(`/api/repairs/${repairId}/estimates`)
+      .set('Cookie', vendorCookie)
+      .send({
+        minCost: 120,
+        maxCost: 180,
+        turnaroundTime: '2-3 days',
+        warrantyMonths: 3,
+        notes: 'OEM-grade panel replacement.',
+      })
+      .expect(201)
+
+    const estimateId = estimateRes.body.data.estimate.id
+
+    await request(app)
+      .post(`/api/repairs/${repairId}/select-estimate`)
+      .set('Cookie', customerCookie)
+      .send({ estimateId })
+      .expect(200)
+
+    const vendorListRes = await request(app)
+      .get('/api/repairs')
+      .set('Cookie', vendorCookie)
+      .expect(200)
+
+    expect(vendorListRes.body.data.repairs).toHaveLength(1)
+    expect(vendorListRes.body.data.repairs[0].id).toBe(repairId)
+    expect(vendorListRes.body.data.repairs[0].status).toBe('vendor_selected')
+  })
+
   it('validates image uploads and handles data URI fallback', async () => {
     const app = createApp()
     const sessionCookie = await createVerifiedUser(app)

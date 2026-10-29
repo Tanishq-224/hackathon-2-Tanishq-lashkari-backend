@@ -125,6 +125,26 @@ const repairRequestSchema = new Schema(
       required: false,
     },
     finalApprovedAmount: { type: Number, required: false },
+    repairBenchNotes: {
+      type: String,
+      required: false,
+      trim: true,
+      maxlength: 2000,
+    },
+    afterRepairImages: {
+      type: [imageAttachmentSchema],
+      default: [],
+      validate: [
+        (val: unknown[]) => val.length <= 5,
+        'Cannot exceed 5 after-repair proof images',
+      ],
+    },
+    resolutionSummary: {
+      type: String,
+      required: false,
+      trim: true,
+      maxlength: 3000,
+    },
   },
   { timestamps: true },
 )

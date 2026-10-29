@@ -1,6 +1,7 @@
 import {
   createRepairRequest,
   findRepairRequestById,
+  findRepairRequestsByAssignedVendor,
   findRepairRequestsByCustomer,
   type RepairRecord,
 } from '../repositories/repair.repository.js'
@@ -45,6 +46,28 @@ export async function getCustomerRepairRequests(
 }
 
 /**
+ * @description Lists repair tickets for the authenticated user based on role.
+ * @async
+ * @param {{ id: string; role: string }} user - Authenticated session user.
+ * @returns {Promise<RepairRecord[]>} Customer-owned or vendor-assigned repairs.
+ */
+export async function getRepairRequestsForUser(user: {
+  id: string
+  role: string
+}): Promise<RepairRecord[]> {
+  if (user.role === 'vendor') {
+    return findRepairRequestsByAssignedVendor(user.id)
+  }
+
+  if (user.role === 'customer') {
+    return findRepairRequestsByCustomer(user.id)
+  }
+
+  // Admins see all assigned + customer tickets is out of scope; return empty for now
+  return []
+}
+
+/**
  * @description Retrieves a single repair request by ID with ownership verification.
  * @async
  * @param {string} repairId - Repair request ID.
@@ -61,8 +84,16 @@ export async function getRepairRequestDetails(
     throw new AppError('Repair request not found.', 404)
   }
 
-  // Customer can only view their own requests; vendors can view open/assigned requests
   if (requester.role === 'customer' && repair.customerId !== requester.id) {
+    throw new AppError('You are not authorized to view this repair request.', 403)
+  }
+
+  if (
+    requester.role === 'vendor' &&
+    repair.assignedVendorId !== requester.id &&
+    repair.status !== 'submitted' &&
+    repair.status !== 'estimated'
+  ) {
     throw new AppError('You are not authorized to view this repair request.', 403)
   }
 
