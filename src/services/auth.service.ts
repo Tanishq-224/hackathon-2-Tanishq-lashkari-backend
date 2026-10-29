@@ -70,10 +70,22 @@ async function issueOtp(email: string, purpose: OtpPurpose): Promise<void> {
       ? 'Verify your Repairex account'
       : 'Reset your Repairex password'
 
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e0ded7; border-radius: 12px; background: #ffffff;">
+      <h2 style="color: #303238; margin-top: 0; font-size: 20px;">${subject}</h2>
+      <p style="color: #52555a; font-size: 15px; line-height: 1.5;">Use the 6-digit verification code below to verify your account on Repairex:</p>
+      <div style="margin: 20px 0; padding: 16px; background: #fff4ed; border: 1px solid #fbd0b5; border-radius: 8px; text-align: center;">
+        <span style="font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #e66418; font-family: monospace;">${code}</span>
+      </div>
+      <p style="color: #888888; font-size: 13px;">This code will expire in ${env.OTP_EXPIRES_MINUTES} minutes. If you did not request this code, please ignore this email.</p>
+    </div>
+  `
+
   await sendTransactionalEmail({
     to: normalized,
     subject,
     text: `Your Repairex verification code is ${code}. It expires in ${env.OTP_EXPIRES_MINUTES} minutes.`,
+    html,
   })
 }
 

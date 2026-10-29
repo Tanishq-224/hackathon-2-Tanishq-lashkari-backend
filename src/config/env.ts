@@ -1,14 +1,14 @@
+import 'dotenv/config'
 import { z } from 'zod'
+
+const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
 
 const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
   PORT: z.coerce.number().int().positive().default(5000),
-  MONGODB_URI: z.preprocess(
-    (value) => (value === '' ? undefined : value),
-    z.string().url().optional(),
-  ),
+  MONGODB_URI: z.preprocess(emptyToUndefined, z.string().url().optional()),
   CLIENT_URL: z.string().url().default('http://localhost:5173'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
@@ -18,17 +18,17 @@ const envSchema = z.object({
     .default('dev-only-change-session-secret-min-16'),
   JWT_EXPIRES_IN: z.string().default('7d'),
   OTP_EXPIRES_MINUTES: z.coerce.number().int().positive().default(10),
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.coerce.number().int().positive().optional(),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().email().optional(),
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_CALLBACK_URL: z.preprocess(
-    (value) => (value === '' ? undefined : value),
-    z.string().url().optional(),
+  SMTP_HOST: z.preprocess(emptyToUndefined, z.string().optional()),
+  SMTP_PORT: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().positive().optional(),
   ),
+  SMTP_USER: z.preprocess(emptyToUndefined, z.string().optional()),
+  SMTP_PASS: z.preprocess(emptyToUndefined, z.string().optional()),
+  SMTP_FROM: z.preprocess(emptyToUndefined, z.string().email().optional()),
+  GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  GOOGLE_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
+  GOOGLE_CALLBACK_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
 })
 
 export type Env = z.infer<typeof envSchema>
