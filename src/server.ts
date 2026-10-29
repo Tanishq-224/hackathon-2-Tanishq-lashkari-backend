@@ -1,7 +1,7 @@
 import { env } from './config/env.js'
 import { createApp } from './app.js'
 import { connectDatabase } from './config/database.js'
-import { verifySmtpConnection } from './services/email.service.js'
+import { verifyEmailTransport } from './services/email.service.js'
 
 /**
  * @description Boots the HTTP server and optional MongoDB connection.
@@ -10,7 +10,7 @@ import { verifySmtpConnection } from './services/email.service.js'
  */
 async function startServer(): Promise<void> {
   await connectDatabase()
-  await verifySmtpConnection()
+  await verifyEmailTransport()
 
   const app = createApp()
 

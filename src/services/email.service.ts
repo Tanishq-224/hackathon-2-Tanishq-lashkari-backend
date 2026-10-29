@@ -50,11 +50,43 @@ export function isSmtpConfigured(): boolean {
 }
 
 /**
+ * @description True when the app is running on Render (outbound SMTP is usually blocked).
+ * @returns {boolean}
+ */
+export function isRunningOnRender(): boolean {
+  return Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID)
+}
+
+/**
+ * @description Gmail/default SMTP ports blocked on many PaaS hosts (Render free tier).
+ * @returns {boolean}
+ */
+export function isCloudBlockedSmtpPort(port = env.SMTP_PORT ?? 465): boolean {
+  return port === 465 || port === 587 || port === 25
+}
+
+/**
+ * @description Whether SMTP should not be used on this host (use Resend HTTPS instead).
+ * @returns {boolean}
+ */
+export function isSmtpBlockedOnCurrentHost(): boolean {
+  return isRunningOnRender() && isCloudBlockedSmtpPort() && !env.RESEND_API_KEY
+}
+
+/**
  * @description Checks whether any valid transactional email transport (SMTP or Resend API) is configured.
  * @returns {boolean} True if email can be sent.
  */
 export function isEmailConfigured(): boolean {
-  return Boolean(env.RESEND_API_KEY && env.SMTP_FROM) || isSmtpConfigured()
+  if (env.RESEND_API_KEY) {
+    return true
+  }
+
+  if (isSmtpBlockedOnCurrentHost()) {
+    return false
+  }
+
+  return isSmtpConfigured()
 }
 
 /**
@@ -153,19 +185,28 @@ export function getTransporter(): Transporter | null {
  * @async
  * @returns {Promise<boolean>} True if connection verified.
  */
-export async function verifySmtpConnection(): Promise<boolean> {
+export async function verifyEmailTransport(): Promise<boolean> {
   if (env.NODE_ENV === 'test') {
     return true
   }
 
-  // 1. Resend API mode
+  // 1. Resend API mode (HTTPS — works on Render/Vercel)
   if (env.RESEND_API_KEY) {
     console.info(
       `[email] Resend HTTP API configured (uses HTTPS port 443, Render firewall-safe). Sender: ${
-        env.SMTP_FROM ? maskEmail(env.SMTP_FROM) : 'default'
+        env.SMTP_FROM ? maskEmail(env.SMTP_FROM) : 'Repairex <onboarding@resend.dev>'
       }`,
     )
     return true
+  }
+
+  if (isSmtpBlockedOnCurrentHost()) {
+    console.warn(
+      '[email:diagnostic] Render blocks outbound SMTP on ports 465/587/25. Skipping SMTP verify.\n' +
+        '[email:diagnostic] Add RESEND_API_KEY + SMTP_FROM in Render env for lifecycle emails (HTTPS, no firewall block).\n' +
+        '[email:diagnostic] In-app notifications still work; email will use server log fallback until Resend is set.',
+    )
+    return false
   }
 
   const safeConfig = getSafeSmtpConfig()
@@ -322,6 +363,15 @@ export async function sendTransactionalEmail({
     }
   }
 
+  if (isSmtpBlockedOnCurrentHost()) {
+    console.info('[email:render-fallback] SMTP blocked on Render — logging email to console:', {
+      to: maskEmail(to),
+      subject,
+      text,
+    })
+    return
+  }
+
   // 2. SMTP Delivery (Nodemailer)
   const transporter = getTransporter()
   if (!transporter) {
@@ -347,3 +397,6 @@ export async function sendTransactionalEmail({
     throw error
   }
 }
+
+/** @deprecated Use {@link verifyEmailTransport} */
+export const verifySmtpConnection = verifyEmailTransport

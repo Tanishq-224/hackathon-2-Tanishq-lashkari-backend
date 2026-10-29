@@ -1,5 +1,7 @@
 import {
   getSafeSmtpConfig,
+  isCloudBlockedSmtpPort,
+  isRunningOnRender,
   isSmtpConfigured,
   maskEmail,
   resolveSmtpSecure,
@@ -37,6 +39,31 @@ describe('Email Service Configuration and Security', () => {
     it('handles short usernames safely', () => {
       expect(maskEmail('a@b.com')).toBe('***@b.com')
       expect(maskEmail('ab@b.com')).toBe('***@b.com')
+    })
+  })
+
+  describe('Render / cloud SMTP helpers', () => {
+    const originalRender = process.env.RENDER
+
+    afterEach(() => {
+      if (originalRender === undefined) {
+        delete process.env.RENDER
+      } else {
+        process.env.RENDER = originalRender
+      }
+    })
+
+    it('detects blocked SMTP ports on PaaS hosts', () => {
+      expect(isCloudBlockedSmtpPort(465)).toBe(true)
+      expect(isCloudBlockedSmtpPort(587)).toBe(true)
+      expect(isCloudBlockedSmtpPort(2525)).toBe(false)
+    })
+
+    it('detects Render runtime via RENDER env', () => {
+      delete process.env.RENDER
+      expect(isRunningOnRender()).toBe(false)
+      process.env.RENDER = 'true'
+      expect(isRunningOnRender()).toBe(true)
     })
   })
 
