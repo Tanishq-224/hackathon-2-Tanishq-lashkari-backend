@@ -40,6 +40,7 @@ const envSchema = z.object({
   SMTP_USER: z.preprocess(emptyToUndefined, z.string().optional()),
   SMTP_PASS: z.preprocess(emptyToUndefined, z.string().optional()),
   SMTP_FROM: z.preprocess(emptyToUndefined, z.string().optional()),
+  RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   GOOGLE_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
   GOOGLE_CALLBACK_URL: z.preprocess(emptyToUndefined, z.string().optional()),
