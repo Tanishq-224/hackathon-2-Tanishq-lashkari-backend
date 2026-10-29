@@ -38,3 +38,4 @@ export type OtpDocument = InferSchemaType<typeof otpSchema> & {
  */
 export const OtpModel =
   mongoose.models.Otp ?? mongoose.model('Otp', otpSchema)
+
