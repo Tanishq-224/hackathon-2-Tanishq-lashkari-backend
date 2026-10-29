@@ -119,6 +119,12 @@ const repairRequestSchema = new Schema(
     },
     acceptedCostMin: { type: Number, required: false },
     acceptedCostMax: { type: Number, required: false },
+    quotationId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Quotation',
+      required: false,
+    },
+    finalApprovedAmount: { type: Number, required: false },
   },
   { timestamps: true },
 )

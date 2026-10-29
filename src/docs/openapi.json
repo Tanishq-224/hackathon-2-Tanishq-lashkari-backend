@@ -394,6 +394,89 @@
           "404": { "description": "Estimate not found" }
         }
       }
+    },
+    "/api/repairs/{id}/diagnosis": {
+      "post": {
+        "summary": "Submit physical diagnosis findings and itemized quotation (Assigned Vendor only)",
+        "tags": ["Quotations"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["diagnosticFindings", "lineItems", "estimatedCompletion"],
+                "properties": {
+                  "diagnosticFindings": { "type": "string", "example": "Diagnostic findings text" },
+                  "lineItems": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["description", "category", "cost"],
+                      "properties": {
+                        "description": { "type": "string" },
+                        "category": { "type": "string", "enum": ["parts", "labor", "consumable", "other"] },
+                        "cost": { "type": "number" }
+                      }
+                    }
+                  },
+                  "estimatedCompletion": { "type": "string", "example": "2 Days" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Diagnostic quotation submitted successfully" },
+          "403": { "description": "Forbidden (Only assigned vendor can submit)" }
+        }
+      }
+    },
+    "/api/repairs/{id}/quotation": {
+      "get": {
+        "summary": "Retrieve itemized quotation for repair ticket",
+        "tags": ["Quotations"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Itemized quotation details" },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Repair not found" }
+        }
+      }
+    },
+    "/api/repairs/{id}/quotation/decision": {
+      "post": {
+        "summary": "Customer decision on quotation (approve/reject)",
+        "tags": ["Quotations"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["decision"],
+                "properties": {
+                  "decision": { "type": "string", "enum": ["approved", "rejected"] },
+                  "feedback": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Quotation decision recorded" },
+          "400": { "description": "Already decided or invalid decision" },
+          "403": { "description": "Forbidden (Only ticket customer can decide)" }
+        }
+      }
     }
   }
 }

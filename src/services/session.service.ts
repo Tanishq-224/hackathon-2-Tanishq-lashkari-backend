@@ -48,6 +48,8 @@ export function verifySessionToken(token: string): SessionPayload | null {
 
 /**
  * @description Cookie options for the session token.
+ * In production cross-site requests (Vercel to Render), sameSite must be 'none' and secure must be true.
+ * In development / tests, sameSite is 'lax' and secure is false for local HTTP.
  * @returns {object} Express cookie configuration.
  */
 export function getSessionCookieOptions(): {
@@ -58,11 +60,12 @@ export function getSessionCookieOptions(): {
   path: string
 } {
   const maxAgeMs = 7 * 24 * 60 * 60 * 1000
+  const isProd = env.NODE_ENV === 'production'
 
   return {
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: maxAgeMs,
     path: '/',
   }

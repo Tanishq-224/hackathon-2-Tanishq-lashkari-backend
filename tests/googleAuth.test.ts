@@ -6,6 +6,7 @@ process.env.NODE_ENV = 'test'
 process.env.CLIENT_URL = 'http://localhost:5173'
 process.env.GOOGLE_CLIENT_ID = 'test-client-id.apps.googleusercontent.com'
 
+import { env } from '../src/config/env.js'
 import {
   clearMemoryAuthStore,
   createUser,
@@ -136,7 +137,7 @@ describe('Phase 2/Auth: Secure Google Identity Services Sign-In', () => {
     const mockClient = {
       verifyIdToken: jest.fn<OAuth2Client['verifyIdToken']>().mockResolvedValue({
         getPayload: () => ({
-          aud: 'test-client-id.apps.googleusercontent.com',
+          aud: env.GOOGLE_CLIENT_ID || 'test-client-id.apps.googleusercontent.com',
           sub: 'google-sub-unverified',
           email: 'unverified@example.com',
           email_verified: false,

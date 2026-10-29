@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit'
 import helmet from 'helmet'
 import swaggerUi from 'swagger-ui-express'
 
-import { env } from './config/env.js'
+import { env, getAllowedOrigins } from './config/env.js'
 import openApiDocument from './docs/openapi.json' with { type: 'json' }
 import { errorHandler } from './middleware/errorHandler.js'
 import { notFoundHandler } from './middleware/notFoundHandler.js'
@@ -20,13 +20,35 @@ export function createApp(): express.Application {
 
   app.set('trust proxy', 1)
 
-  app.use(helmet())
+  // Configure helmet with cross-origin resource policy enabled for API consumers
   app.use(
-    cors({
-      origin: env.CLIENT_URL,
-      credentials: true,
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   )
+
+  const allowedOrigins = getAllowedOrigins(env.CLIENT_URL)
+
+  const corsOptions: cors.CorsOptions = {
+    origin: (origin, callback) => {
+      // Allow non-browser requests (e.g. mobile apps, curl, server-to-server) with no origin header
+      if (!origin) {
+        return callback(null, true)
+      }
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true)
+      }
+      return callback(null, false)
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    exposedHeaders: ['Set-Cookie'],
+  }
+
+  // Preflight & general CORS middleware
+  app.use(cors(corsOptions))
+
   app.use(
     rateLimit({
       windowMs: env.RATE_LIMIT_WINDOW_MS,

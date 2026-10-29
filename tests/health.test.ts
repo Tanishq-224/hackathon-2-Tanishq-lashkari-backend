@@ -14,7 +14,12 @@ describe('GET /api/health', () => {
     expect(response.body).toMatchObject({
       success: true,
       message: 'Repairex API is running',
-      data: { environment: 'test' },
+      data: {
+        environment: 'test',
+        database: {
+          mode: expect.stringMatching(/mongodb|in-memory/),
+        },
+      },
     })
   })
 })

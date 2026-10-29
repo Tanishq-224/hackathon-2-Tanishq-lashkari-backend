@@ -33,6 +33,8 @@ export type RepairRecord = {
   acceptedEstimateId?: string
   acceptedCostMin?: number
   acceptedCostMax?: number
+  quotationId?: string
+  finalApprovedAmount?: number
   createdAt: string
   updatedAt: string
 }
@@ -82,6 +84,8 @@ function fromMongo(doc: RepairRequestDocument): RepairRecord {
     acceptedEstimateId: doc.acceptedEstimateId ? doc.acceptedEstimateId.toString() : undefined,
     acceptedCostMin: doc.acceptedCostMin ?? undefined,
     acceptedCostMax: doc.acceptedCostMax ?? undefined,
+    quotationId: doc.quotationId ? doc.quotationId.toString() : undefined,
+    finalApprovedAmount: doc.finalApprovedAmount ?? undefined,
     createdAt: (doc as unknown as { createdAt: Date }).createdAt?.toISOString() || new Date().toISOString(),
     updatedAt: (doc as unknown as { updatedAt: Date }).updatedAt?.toISOString() || new Date().toISOString(),
   }
@@ -309,3 +313,83 @@ export async function assignVendorToRepair(
   return doc ? fromMongo(doc) : null
 }
 
+/**
+ * @description Attaches an itemized diagnostic quotation to a repair ticket and advances status to 'diagnosed'.
+ * @async
+ */
+export async function attachQuotationToRepair(
+  id: string,
+  quotationId: string,
+): Promise<RepairRecord | null> {
+  const now = new Date().toISOString()
+
+  if (isMemoryStore()) {
+    const existing = memoryRepairs.get(id)
+    if (!existing) return null
+    const updated: RepairRecord = {
+      ...existing,
+      status: 'diagnosed',
+      quotationId,
+      updatedAt: now,
+    }
+    memoryRepairs.set(id, updated)
+    return updated
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(quotationId)) {
+    return null
+  }
+
+  const doc = await RepairRequestModel.findByIdAndUpdate(
+    id,
+    {
+      status: 'diagnosed',
+      quotationId: new mongoose.Types.ObjectId(quotationId),
+    },
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}
+
+/**
+ * @description Updates the repair status and final approved amount following customer quotation decision.
+ * @async
+ */
+export async function updateRepairQuotationDecision(
+  id: string,
+  status: RepairStatus,
+  finalApprovedAmount?: number,
+): Promise<RepairRecord | null> {
+  const now = new Date().toISOString()
+
+  if (isMemoryStore()) {
+    const existing = memoryRepairs.get(id)
+    if (!existing) return null
+    const updated: RepairRecord = {
+      ...existing,
+      status,
+      finalApprovedAmount: finalApprovedAmount ?? existing.finalApprovedAmount,
+      updatedAt: now,
+    }
+    memoryRepairs.set(id, updated)
+    return updated
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return null
+  }
+
+  const update: Record<string, unknown> = { status }
+  if (typeof finalApprovedAmount === 'number') {
+    update.finalApprovedAmount = finalApprovedAmount
+  }
+
+  const doc = await RepairRequestModel.findByIdAndUpdate(
+    id,
+    update,
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}

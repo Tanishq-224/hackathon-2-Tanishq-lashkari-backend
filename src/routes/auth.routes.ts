@@ -28,7 +28,7 @@ import {
   findOrCreateGoogleUser,
   findUserByEmail,
 } from '../repositories/auth.repository.js'
-import { env } from '../config/env.js'
+import { env, getAllowedOrigins } from '../config/env.js'
 
 export const authRouter = Router()
 
@@ -108,7 +108,8 @@ authRouter.post(
  * @description Clears the session cookie.
  */
 authRouter.post('/logout', (_req, res) => {
-  res.clearCookie(getSessionCookieName(), { path: '/' }).json({
+  const { maxAge, ...clearOptions } = getSessionCookieOptions()
+  res.clearCookie(getSessionCookieName(), clearOptions).json({
     success: true,
     message: 'Logged out.',
   })
@@ -121,6 +122,8 @@ authRouter.get(
   '/me',
   asyncHandler(async (req, res) => {
   const token = req.cookies?.[getSessionCookieName()] as string | undefined
+  const { maxAge, ...clearOptions } = getSessionCookieOptions()
+
   if (!token) {
     res.status(401).json({ success: false, message: 'Not authenticated.' })
     return
@@ -128,14 +131,14 @@ authRouter.get(
 
   const payload = verifySessionToken(token)
   if (!payload) {
-    res.clearCookie(getSessionCookieName(), { path: '/' })
+    res.clearCookie(getSessionCookieName(), clearOptions)
     res.status(401).json({ success: false, message: 'Session expired.' })
     return
   }
 
   const user = await findUserByEmail(payload.email)
   if (!user?.emailVerified) {
-    res.clearCookie(getSessionCookieName(), { path: '/' })
+    res.clearCookie(getSessionCookieName(), clearOptions)
     res.status(401).json({ success: false, message: 'Not authenticated.' })
     return
   }
@@ -250,15 +253,37 @@ authRouter.post(
 )
 
 /**
+ * @description Resolves safe frontend destination for Google OAuth redirects.
+ * Validates against allowed origins to prevent open redirects.
+ */
+function resolveClientRedirectUrl(requestedOrigin?: string): string {
+  const allowedOrigins = getAllowedOrigins(env.CLIENT_URL)
+  if (requestedOrigin) {
+    const clean = requestedOrigin.trim().replace(/\/+$/, '')
+    if (allowedOrigins.includes(clean)) {
+      return clean
+    }
+  }
+
+  // Fallback preference: production Vercel app first, else primary configured origin
+  const prodOrigin = allowedOrigins.find((o) => o.includes('vercel.app'))
+  if (prodOrigin) return prodOrigin
+  return allowedOrigins[0] || 'http://localhost:5173'
+}
+
+/**
  * @description Initiates Google OAuth redirect or guides setup if credentials are missing.
  */
 authRouter.get(
   '/google',
   asyncHandler(async (req, res) => {
+    const clientOrigin = (req.query.origin || req.query.state) as string | undefined
+    const targetClientUrl = resolveClientRedirectUrl(clientOrigin)
+
     if (!env.GOOGLE_CLIENT_ID) {
       res.redirect(
-        `${env.CLIENT_URL}/login?error=${encodeURIComponent(
-          'Google OAuth requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET configured in backend .env',
+        `${targetClientUrl}/login?error=${encodeURIComponent(
+          'Google OAuth requires GOOGLE_CLIENT_ID configured in backend environment.',
         )}`,
       )
       return
@@ -274,6 +299,7 @@ authRouter.get(
     googleAuthUrl.searchParams.set('response_type', 'code')
     googleAuthUrl.searchParams.set('scope', 'openid email profile')
     googleAuthUrl.searchParams.set('prompt', 'select_account')
+    googleAuthUrl.searchParams.set('state', encodeURIComponent(targetClientUrl))
 
     res.redirect(googleAuthUrl.toString())
   }),
@@ -287,10 +313,14 @@ authRouter.get(
   asyncHandler(async (req, res) => {
     const code = req.query.code as string | undefined
     const error = req.query.error as string | undefined
+    const state = req.query.state as string | undefined
+    const targetClientUrl = resolveClientRedirectUrl(
+      state ? decodeURIComponent(state) : undefined,
+    )
 
     if (error || !code) {
       res.redirect(
-        `${env.CLIENT_URL}/login?error=${encodeURIComponent(
+        `${targetClientUrl}/login?error=${encodeURIComponent(
           error || 'Google authorization was canceled or failed.',
         )}`,
       )
@@ -299,7 +329,7 @@ authRouter.get(
 
     if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
       res.redirect(
-        `${env.CLIENT_URL}/login?error=${encodeURIComponent(
+        `${targetClientUrl}/login?error=${encodeURIComponent(
           'Google OAuth credentials missing on backend.',
         )}`,
       )
@@ -326,7 +356,7 @@ authRouter.get(
 
     if (!tokenResponse.ok) {
       res.redirect(
-        `${env.CLIENT_URL}/login?error=${encodeURIComponent(
+        `${targetClientUrl}/login?error=${encodeURIComponent(
           'Failed to exchange authorization code with Google.',
         )}`,
       )
@@ -336,7 +366,7 @@ authRouter.get(
     const tokenData = (await tokenResponse.json()) as { access_token?: string }
     if (!tokenData.access_token) {
       res.redirect(
-        `${env.CLIENT_URL}/login?error=${encodeURIComponent(
+        `${targetClientUrl}/login?error=${encodeURIComponent(
           'Google OAuth did not provide an access token.',
         )}`,
       )
@@ -352,7 +382,7 @@ authRouter.get(
 
     if (!profileResponse.ok) {
       res.redirect(
-        `${env.CLIENT_URL}/login?error=${encodeURIComponent(
+        `${targetClientUrl}/login?error=${encodeURIComponent(
           'Failed to retrieve Google user profile.',
         )}`,
       )
@@ -363,12 +393,22 @@ authRouter.get(
       sub: string
       name?: string
       email: string
+      email_verified?: boolean
     }
 
     if (!profile.email) {
       res.redirect(
-        `${env.CLIENT_URL}/login?error=${encodeURIComponent(
+        `${targetClientUrl}/login?error=${encodeURIComponent(
           'Google profile did not contain an email address.',
+        )}`,
+      )
+      return
+    }
+
+    if (profile.email_verified !== true) {
+      res.redirect(
+        `${targetClientUrl}/login?error=${encodeURIComponent(
+          'The email associated with this Google account is not verified by Google.',
         )}`,
       )
       return
@@ -382,14 +422,16 @@ authRouter.get(
 
     const sessionPayload = {
       sub: user.id,
+      id: user.id,
       email: user.email,
       role: user.role,
+      fullName: user.fullName,
     }
 
     const token = signSessionToken(sessionPayload)
 
     res
       .cookie(getSessionCookieName(), token, getSessionCookieOptions())
-      .redirect(`${env.CLIENT_URL}/dashboard`)
+      .redirect(`${targetClientUrl}/dashboard`)
   }),
 )
