@@ -54,6 +54,14 @@ export const googleAuthSchema = z.object({
     .min(10, 'Valid Google credential token is required.'),
 })
 
+export const updateProfileSchema = z.object({
+  fullName: z
+    .string()
+    .trim()
+    .min(2, 'Name must be at least 2 characters.')
+    .max(80, 'Name cannot exceed 80 characters.'),
+})
+
 export type SignupInput = z.infer<typeof signupSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>

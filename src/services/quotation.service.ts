@@ -14,6 +14,12 @@ import type {
   CreateQuotationInput,
   QuotationDecisionInput,
 } from '../schemas/quotation.schema.js'
+import {
+  formatDeviceLabel,
+  notifyCustomerQuotationReady,
+  notifyVendorQuoteApproved,
+  notifyVendorQuoteDeclined,
+} from './lifecycleNotify.service.js'
 import { AppError } from '../utils/AppError.js'
 
 type AuthenticatedUser = {
@@ -67,6 +73,14 @@ export async function submitDiagnosticQuotation(
   if (!updatedRepair) {
     throw new AppError('Failed to update repair request with diagnostic quotation.', 500)
   }
+
+  notifyCustomerQuotationReady({
+    customerId: repair.customerId,
+    repairRequestId,
+    vendorName: vendor.fullName,
+    totalAmount,
+    deviceLabel: formatDeviceLabel(repair.brand, repair.modelName),
+  })
 
   return { quotation, repair: updatedRepair }
 }
@@ -164,6 +178,22 @@ export async function decideQuotation(
     data.decision === 'approved'
       ? 'Quotation approved successfully. Repair work authorized!'
       : 'Quotation declined. Repair ticket cancelled.'
+
+  const deviceLabel = formatDeviceLabel(repair.brand, repair.modelName)
+  if (data.decision === 'approved' && repair.assignedVendorId) {
+    notifyVendorQuoteApproved({
+      vendorId: repair.assignedVendorId,
+      repairRequestId,
+      deviceLabel,
+      amount: updatedQuotation.totalAmount,
+    })
+  } else if (data.decision === 'rejected' && repair.assignedVendorId) {
+    notifyVendorQuoteDeclined({
+      vendorId: repair.assignedVendorId,
+      repairRequestId,
+      deviceLabel,
+    })
+  }
 
   return {
     quotation: updatedQuotation,

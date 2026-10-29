@@ -15,6 +15,11 @@ import {
   type RepairRecord,
 } from '../repositories/repair.repository.js'
 import type { CreateEstimateInput } from '../schemas/estimate.schema.js'
+import {
+  formatDeviceLabel,
+  notifyCustomerEstimateReceived,
+  notifyVendorAssigned,
+} from './lifecycleNotify.service.js'
 import { AppError } from '../utils/AppError.js'
 
 type AuthenticatedUser = {
@@ -78,6 +83,13 @@ export async function submitVendorEstimate(
   if (repair.status === 'submitted') {
     await updateRepairRequestStatus(repairRequestId, 'estimated')
   }
+
+  notifyCustomerEstimateReceived({
+    customerId: repair.customerId,
+    repairRequestId,
+    vendorName: vendor.fullName,
+    deviceLabel: formatDeviceLabel(repair.brand, repair.modelName),
+  })
 
   return estimate
 }
@@ -159,6 +171,12 @@ export async function selectVendorEstimate(
   if (!updatedRepair) {
     throw new AppError('Failed to update repair ticket with vendor assignment.', 500)
   }
+
+  notifyVendorAssigned({
+    vendorId: estimate.vendorId,
+    repairRequestId,
+    deviceLabel: formatDeviceLabel(repair.brand, repair.modelName),
+  })
 
   return {
     repair: updatedRepair,

@@ -92,6 +92,64 @@ export async function findUserByEmail(
 }
 
 /**
+ * @description Finds a user by Mongo / memory ID.
+ * @async
+ * @param {string} id - User ID.
+ * @returns {Promise<AuthUserRecord | null>} User or null.
+ */
+export async function findUserById(id: string): Promise<AuthUserRecord | null> {
+  if (isMemoryAuthStore()) {
+    for (const user of memoryUsers.values()) {
+      if (user.id === id) {
+        return user
+      }
+    }
+    return null
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return null
+  }
+
+  const doc = await UserModel.findById(id)
+  return doc ? fromMongo(doc) : null
+}
+
+/**
+ * @description Updates the display name for an authenticated user.
+ * @async
+ */
+export async function updateUserFullName(
+  id: string,
+  fullName: string,
+): Promise<AuthUserRecord | null> {
+  const trimmed = fullName.trim()
+
+  if (isMemoryAuthStore()) {
+    for (const [email, user] of memoryUsers.entries()) {
+      if (user.id === id) {
+        const updated = { ...user, fullName: trimmed }
+        memoryUsers.set(email, updated)
+        return updated
+      }
+    }
+    return null
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return null
+  }
+
+  const doc = await UserModel.findByIdAndUpdate(
+    id,
+    { fullName: trimmed },
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}
+
+/**
  * @description Creates a new unverified user record.
  * @async
  * @param {object} input - User fields.

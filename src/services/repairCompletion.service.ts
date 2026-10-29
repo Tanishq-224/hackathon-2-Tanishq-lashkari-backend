@@ -9,6 +9,10 @@ import type {
   StartRepairWorkInput,
   SubmitRepairCompletionInput,
 } from '../schemas/repairCompletion.schema.js'
+import {
+  formatDeviceLabel,
+  notifyCustomerReadyForPickup,
+} from './lifecycleNotify.service.js'
 import { AppError } from '../utils/AppError.js'
 
 type AuthenticatedUser = {
@@ -91,6 +95,12 @@ export async function submitRepairCompletionProof(
   if (!updated) {
     throw new AppError('Failed to save repair completion proof.', 500)
   }
+
+  notifyCustomerReadyForPickup({
+    customerId: repair.customerId,
+    repairRequestId,
+    deviceLabel: formatDeviceLabel(repair.brand, repair.modelName),
+  })
 
   return {
     repair: updated,

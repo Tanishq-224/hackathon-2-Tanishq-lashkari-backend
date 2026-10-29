@@ -8,8 +8,13 @@ import {
   loginSchema,
   resetPasswordSchema,
   signupSchema,
+  updateProfileSchema,
   verifyOtpSchema,
 } from '../schemas/auth.schema.js'
+import {
+  requireAuth,
+  type AuthenticatedRequest,
+} from '../middleware/authMiddleware.js'
 import {
   getSessionCookieName,
   getSessionCookieOptions,
@@ -27,6 +32,7 @@ import { AppError } from '../utils/AppError.js'
 import {
   findOrCreateGoogleUser,
   findUserByEmail,
+  updateUserFullName,
 } from '../repositories/auth.repository.js'
 import { env, getAllowedOrigins } from '../config/env.js'
 
@@ -154,6 +160,39 @@ authRouter.get(
       },
     },
   })
+  }),
+)
+
+/**
+ * @description Updates the authenticated user's display name.
+ */
+authRouter.patch(
+  '/profile',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = updateProfileSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      throw new AppError(issue?.message ?? 'Invalid profile data.', 400)
+    }
+
+    const updated = await updateUserFullName(req.user!.id, parsed.data.fullName)
+    if (!updated) {
+      throw new AppError('Profile update failed.', 500)
+    }
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully.',
+      data: {
+        user: {
+          id: updated.id,
+          fullName: updated.fullName,
+          email: updated.email,
+          role: updated.role,
+        },
+      },
+    })
   }),
 )
 
