@@ -32,6 +32,11 @@ const envSchema = z.object({
     emptyToUndefined,
     z.coerce.number().int().positive().optional(),
   ),
+  SMTP_SECURE: z.preprocess((val) => {
+    if (val === 'true' || val === true) return true
+    if (val === 'false' || val === false) return false
+    return undefined
+  }, z.boolean().optional()),
   SMTP_USER: z.preprocess(emptyToUndefined, z.string().optional()),
   SMTP_PASS: z.preprocess(emptyToUndefined, z.string().optional()),
   SMTP_FROM: z.preprocess(emptyToUndefined, z.string().optional()),

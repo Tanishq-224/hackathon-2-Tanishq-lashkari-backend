@@ -188,6 +188,98 @@
           "302": { "description": "Session established and redirected to dashboard" }
         }
       }
+    },
+    "/api/repairs": {
+      "post": {
+        "summary": "Create a new repair request (Customer only)",
+        "tags": ["Repairs"],
+        "security": [{ "cookieAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["deviceType", "brand", "modelName", "issueCategory", "description"],
+                "properties": {
+                  "deviceType": { "type": "string", "enum": ["phone", "laptop", "tablet", "audio", "smartwatch", "other"], "example": "phone" },
+                  "brand": { "type": "string", "example": "Apple" },
+                  "modelName": { "type": "string", "example": "iPhone 14 Pro" },
+                  "issueCategory": { "type": "string", "enum": ["screen", "battery", "charging", "water_damage", "audio", "software", "camera", "hardware", "other"], "example": "screen" },
+                  "description": { "type": "string", "example": "OLED screen cracked after a drop, touch unresponsive." },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "url": { "type": "string" },
+                        "publicId": { "type": "string" }
+                      }
+                    }
+                  },
+                  "urgency": { "type": "string", "enum": ["low", "medium", "high", "immediate"], "example": "high" },
+                  "estimatedBudgetMin": { "type": "number", "example": 2000 },
+                  "estimatedBudgetMax": { "type": "number", "example": 5000 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Repair request created successfully" },
+          "400": { "description": "Validation error" },
+          "401": { "description": "Not authenticated" },
+          "403": { "description": "Restricted to customers" }
+        }
+      },
+      "get": {
+        "summary": "List all repair requests submitted by the logged-in customer",
+        "tags": ["Repairs"],
+        "security": [{ "cookieAuth": [] }],
+        "responses": {
+          "200": { "description": "Array of repair requests" },
+          "401": { "description": "Not authenticated" }
+        }
+      }
+    },
+    "/api/repairs/{id}": {
+      "get": {
+        "summary": "Get details of a specific repair request by ID",
+        "tags": ["Repairs"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Repair request detail object" },
+          "401": { "description": "Not authenticated" },
+          "404": { "description": "Repair request not found" }
+        }
+      }
+    },
+    "/api/repairs/upload-image": {
+      "post": {
+        "summary": "Upload a repair image attachment to Cloudinary",
+        "tags": ["Repairs"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["imageData"],
+                "properties": {
+                  "imageData": { "type": "string", "description": "Base64 data URI (data:image/...)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Image uploaded successfully, returns URL and public ID" },
+          "400": { "description": "Invalid image payload" },
+          "401": { "description": "Not authenticated" }
+        }
+      }
     }
   }
 }
