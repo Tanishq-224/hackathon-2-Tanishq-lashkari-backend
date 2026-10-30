@@ -1,7 +1,16 @@
 import mongoose, { Schema, type InferSchemaType } from 'mongoose'
 
-export const ESTIMATE_STATUSES = ['pending', 'accepted', 'declined'] as const
+export const ESTIMATE_STATUSES = ['pending', 'accepted', 'declined', 'withdrawn'] as const
 export type EstimateStatus = (typeof ESTIMATE_STATUSES)[number]
+
+const estimateComponentLineSchema = new Schema(
+  {
+    component: { type: String, required: true, trim: true, maxlength: 120 },
+    price: { type: Number, required: true, min: 0.01 },
+    warrantyMonths: { type: Number, required: true, min: 0, max: 60 },
+  },
+  { _id: false },
+)
 
 const estimateSchema = new Schema(
   {
@@ -58,11 +67,26 @@ const estimateSchema = new Schema(
       minlength: 5,
       maxlength: 2000,
     },
+    componentLines: {
+      type: [estimateComponentLineSchema],
+      default: undefined,
+    },
+    labourCost: {
+      type: Number,
+      min: 0,
+      default: undefined,
+    },
     status: {
       type: String,
       enum: ESTIMATE_STATUSES,
       default: 'pending',
       index: true,
+    },
+    declineReason: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: undefined,
     },
   },
   { timestamps: true },

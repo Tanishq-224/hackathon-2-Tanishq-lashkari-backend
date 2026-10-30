@@ -195,3 +195,40 @@ export async function recordQuotationDecision(
   return doc ? fromMongo(doc) : null
 }
 
+/**
+ * @description Marks a pending quotation as withdrawn by the assigned vendor.
+ * @async
+ */
+export async function markQuotationWithdrawn(
+  repairRequestId: string,
+): Promise<QuotationRecord | null> {
+  const now = new Date().toISOString()
+
+  if (isMemoryStore()) {
+    for (const [id, q] of memoryQuotations.entries()) {
+      if (q.repairRequestId === repairRequestId && q.status === 'pending') {
+        const updated: QuotationRecord = {
+          ...q,
+          status: 'withdrawn',
+          updatedAt: now,
+        }
+        memoryQuotations.set(id, updated)
+        return updated
+      }
+    }
+    return null
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(repairRequestId)) {
+    return null
+  }
+
+  const doc = await QuotationModel.findOneAndUpdate(
+    { repairRequestId: new mongoose.Types.ObjectId(repairRequestId), status: 'pending' },
+    { status: 'withdrawn' },
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}
+

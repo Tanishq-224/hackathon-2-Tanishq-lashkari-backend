@@ -7,6 +7,12 @@ import {
   type EstimateStatus,
 } from '../models/Estimate.model.js'
 
+export type EstimateComponentLine = {
+  component: string
+  price: number
+  warrantyMonths: number
+}
+
 export type EstimateRecord = {
   id: string
   repairRequestId: string
@@ -18,7 +24,10 @@ export type EstimateRecord = {
   turnaroundTime: string
   warrantyMonths: number
   notes: string
+  componentLines?: EstimateComponentLine[]
+  labourCost?: number
   status: EstimateStatus
+  declineReason?: string
   createdAt: string
   updatedAt: string
 }
@@ -34,6 +43,14 @@ export function clearMemoryEstimateStore(): void {
 }
 
 function fromMongo(doc: EstimateDocument): EstimateRecord {
+  const componentLines = Array.isArray(doc.componentLines)
+    ? doc.componentLines.map((line) => ({
+        component: line.component,
+        price: line.price,
+        warrantyMonths: line.warrantyMonths,
+      }))
+    : undefined
+
   return {
     id: doc._id.toString(),
     repairRequestId: doc.repairRequestId.toString(),
@@ -45,7 +62,10 @@ function fromMongo(doc: EstimateDocument): EstimateRecord {
     turnaroundTime: doc.turnaroundTime,
     warrantyMonths: doc.warrantyMonths,
     notes: doc.notes,
+    componentLines,
+    labourCost: typeof doc.labourCost === 'number' ? doc.labourCost : undefined,
     status: (doc.status as EstimateStatus) || 'pending',
+    declineReason: doc.declineReason ?? undefined,
     createdAt: (doc as unknown as { createdAt: Date }).createdAt?.toISOString() || new Date().toISOString(),
     updatedAt: (doc as unknown as { updatedAt: Date }).updatedAt?.toISOString() || new Date().toISOString(),
   }
@@ -65,6 +85,8 @@ export async function createEstimate(input: {
   turnaroundTime: string
   warrantyMonths: number
   notes: string
+  componentLines?: EstimateComponentLine[]
+  labourCost?: number
 }): Promise<EstimateRecord> {
   const now = new Date().toISOString()
 
@@ -80,6 +102,8 @@ export async function createEstimate(input: {
       turnaroundTime: input.turnaroundTime,
       warrantyMonths: input.warrantyMonths,
       notes: input.notes,
+      componentLines: input.componentLines,
+      labourCost: input.labourCost,
       status: 'pending',
       createdAt: now,
       updatedAt: now,
@@ -98,10 +122,133 @@ export async function createEstimate(input: {
     turnaroundTime: input.turnaroundTime,
     warrantyMonths: input.warrantyMonths,
     notes: input.notes,
+    componentLines: input.componentLines,
+    labourCost: input.labourCost,
     status: 'pending',
   })
 
   return fromMongo(doc)
+}
+
+type EstimateWriteInput = {
+  minCost: number
+  maxCost: number
+  turnaroundTime: string
+  warrantyMonths: number
+  notes: string
+  componentLines?: EstimateComponentLine[]
+  labourCost?: number
+}
+
+/**
+ * @description Updates an existing estimate (typically while still pending).
+ * @async
+ */
+export async function updateEstimate(
+  estimateId: string,
+  input: EstimateWriteInput,
+): Promise<EstimateRecord | null> {
+  const now = new Date().toISOString()
+
+  if (isMemoryStore()) {
+    const record = memoryEstimates.get(estimateId)
+    if (!record) return null
+    const updated: EstimateRecord = {
+      ...record,
+      ...input,
+      status: 'pending',
+      declineReason: undefined,
+      updatedAt: now,
+    }
+    memoryEstimates.set(estimateId, updated)
+    return updated
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(estimateId)) {
+    return null
+  }
+
+  const doc = await EstimateModel.findByIdAndUpdate(
+    estimateId,
+    {
+      minCost: input.minCost,
+      maxCost: input.maxCost,
+      turnaroundTime: input.turnaroundTime,
+      warrantyMonths: input.warrantyMonths,
+      notes: input.notes,
+      componentLines: input.componentLines,
+      labourCost: input.labourCost,
+      status: 'pending',
+      declineReason: undefined,
+    },
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}
+
+/**
+ * @description Marks a vendor estimate as withdrawn by the submitting vendor.
+ * @async
+ */
+export async function markEstimateWithdrawn(estimateId: string): Promise<EstimateRecord | null> {
+  const now = new Date().toISOString()
+
+  if (isMemoryStore()) {
+    const record = memoryEstimates.get(estimateId)
+    if (!record) return null
+    record.status = 'withdrawn'
+    record.declineReason = undefined
+    record.updatedAt = now
+    memoryEstimates.set(estimateId, record)
+    return record
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(estimateId)) {
+    return null
+  }
+
+  const doc = await EstimateModel.findByIdAndUpdate(
+    estimateId,
+    { status: 'withdrawn', declineReason: undefined },
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}
+
+/**
+ * @description Marks a pending estimate as declined by the customer.
+ * @async
+ */
+export async function markEstimateDeclinedByCustomer(
+  estimateId: string,
+  declineReason?: string,
+): Promise<EstimateRecord | null> {
+  const now = new Date().toISOString()
+  const trimmedReason = declineReason?.trim() || undefined
+
+  if (isMemoryStore()) {
+    const record = memoryEstimates.get(estimateId)
+    if (!record) return null
+    record.status = 'declined'
+    record.declineReason = trimmedReason
+    record.updatedAt = now
+    memoryEstimates.set(estimateId, record)
+    return record
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(estimateId)) {
+    return null
+  }
+
+  const doc = await EstimateModel.findByIdAndUpdate(
+    estimateId,
+    { status: 'declined', declineReason: trimmedReason },
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
 }
 
 /**
@@ -194,7 +341,7 @@ export async function markEstimateAccepted(
           record.status = 'accepted'
           record.updatedAt = now
           acceptedRecord = record
-        } else {
+        } else if (record.status === 'pending') {
           record.status = 'declined'
           record.updatedAt = now
         }
@@ -223,6 +370,7 @@ export async function markEstimateAccepted(
     {
       repairRequestId: new mongoose.Types.ObjectId(repairRequestId),
       _id: { $ne: new mongoose.Types.ObjectId(acceptedEstimateId) },
+      status: 'pending',
     },
     { status: 'declined' },
   )

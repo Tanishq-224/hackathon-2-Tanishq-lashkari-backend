@@ -226,4 +226,70 @@ describe('Phase 4: Vendor Marketplace & Estimates API', () => {
       .send({ estimateId })
       .expect(400)
   })
+
+  it('allows customer to reject and vendor to withdraw pending estimates on a fresh ticket', async () => {
+    const createRes = await request(app)
+      .post('/api/repairs')
+      .set('Cookie', customerCookie)
+      .send({
+        deviceType: 'laptop',
+        brand: 'Dell',
+        modelName: 'XPS 15',
+        issueCategory: 'battery',
+        description: 'Battery not holding charge.',
+        urgency: 'medium',
+        images: [],
+      })
+      .expect(201)
+
+    const freshRepairId = createRes.body.data.repair.id
+
+    const vendorEstimateRes = await request(app)
+      .post(`/api/repairs/${freshRepairId}/estimates`)
+      .set('Cookie', vendorCookie)
+      .send({
+        minCost: 90,
+        maxCost: 120,
+        turnaroundTime: '48 Hours',
+        warrantyMonths: 6,
+        notes: 'OEM battery replacement.',
+      })
+      .expect(201)
+
+    const freshEstimateId = vendorEstimateRes.body.data.estimate.id
+
+    const rejectRes = await request(app)
+      .post(`/api/repairs/${freshRepairId}/estimates/${freshEstimateId}/reject`)
+      .set('Cookie', customerCookie)
+      .send({ reason: 'Too expensive' })
+      .expect(200)
+
+    expect(rejectRes.body.data.estimate.status).toBe('declined')
+
+    await request(app)
+      .post(`/api/repairs/${freshRepairId}/estimates`)
+      .set('Cookie', secondVendorCookie)
+      .send({
+        minCost: 80,
+        maxCost: 95,
+        turnaroundTime: '24 Hours',
+        warrantyMonths: 3,
+        notes: 'Aftermarket battery option.',
+      })
+      .expect(201)
+
+    const listRes = await request(app)
+      .get(`/api/repairs/${freshRepairId}/estimates`)
+      .set('Cookie', secondVendorCookie)
+      .expect(200)
+
+    const secondBid = listRes.body.data.estimates[0]
+
+    const withdrawRes = await request(app)
+      .post(`/api/repairs/${freshRepairId}/estimates/${secondBid.id}/withdraw`)
+      .set('Cookie', secondVendorCookie)
+      .expect(200)
+
+    expect(withdrawRes.body.data.estimate.status).toBe('withdrawn')
+  })
 })

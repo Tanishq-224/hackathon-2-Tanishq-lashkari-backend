@@ -1,11 +1,13 @@
 import {
   attachQuotationToRepair,
   findRepairRequestById,
+  revertRepairAfterQuotationWithdraw,
   updateRepairQuotationDecision,
   type RepairRecord,
 } from '../repositories/repair.repository.js'
 import {
   findQuotationByRepairRequestId,
+  markQuotationWithdrawn,
   recordQuotationDecision,
   saveQuotation,
   type QuotationRecord,
@@ -14,6 +16,7 @@ import type {
   CreateQuotationInput,
   QuotationDecisionInput,
 } from '../schemas/quotation.schema.js'
+import { queueRepairRefresh } from '../realtime/realtime.service.js'
 import {
   formatDeviceLabel,
   notifyCustomerQuotationReady,
@@ -57,6 +60,24 @@ export async function submitDiagnosticQuotation(
     )
   }
 
+  const existingQuotation = await findQuotationByRepairRequestId(repairRequestId)
+  if (existingQuotation) {
+    if (existingQuotation.status === 'approved' || existingQuotation.status === 'rejected') {
+      throw new AppError('This quotation has already been finalized and cannot be changed.', 400)
+    }
+    if (
+      existingQuotation.status === 'pending' &&
+      repair.status === 'diagnosed' &&
+      existingQuotation.vendorId === vendor.id
+    ) {
+      // Vendor revises a pending quote awaiting customer approval
+    } else if (existingQuotation.status === 'withdrawn') {
+      // Vendor resubmits after withdrawing
+    } else if (existingQuotation.status === 'pending') {
+      throw new AppError('A quotation is already awaiting customer approval.', 400)
+    }
+  }
+
   const totalAmount = data.lineItems.reduce((acc, item) => acc + item.cost, 0)
 
   const quotation = await saveQuotation({
@@ -81,6 +102,8 @@ export async function submitDiagnosticQuotation(
     totalAmount,
     deviceLabel: formatDeviceLabel(repair.brand, repair.modelName),
   })
+
+  queueRepairRefresh(repairRequestId, 'quotation_submitted')
 
   return { quotation, repair: updatedRepair }
 }
@@ -195,10 +218,57 @@ export async function decideQuotation(
     })
   }
 
+  queueRepairRefresh(repairRequestId, `quotation_${data.decision}`)
+
   return {
     quotation: updatedQuotation,
     repair: updatedRepair,
     message,
+  }
+}
+
+/**
+ * @description Assigned vendor withdraws a pending diagnostic quotation before customer decision.
+ * @async
+ */
+export async function withdrawDiagnosticQuotation(
+  vendor: AuthenticatedUser,
+  repairRequestId: string,
+): Promise<{ quotation: QuotationRecord; repair: RepairRecord; message: string }> {
+  const repair = await findRepairRequestById(repairRequestId)
+  if (!repair) {
+    throw new AppError('Repair request not found.', 404)
+  }
+
+  if (repair.assignedVendorId !== vendor.id && vendor.role !== 'admin') {
+    throw new AppError('Only the assigned vendor can withdraw this quotation.', 403)
+  }
+
+  const quotation = await findQuotationByRepairRequestId(repairRequestId)
+  if (!quotation) {
+    throw new AppError('No quotation exists for this repair ticket.', 404)
+  }
+
+  if (quotation.status !== 'pending') {
+    throw new AppError('Only pending quotations can be withdrawn.', 400)
+  }
+
+  const updatedQuotation = await markQuotationWithdrawn(repairRequestId)
+  if (!updatedQuotation) {
+    throw new AppError('Failed to withdraw quotation.', 500)
+  }
+
+  const updatedRepair = await revertRepairAfterQuotationWithdraw(repairRequestId)
+  if (!updatedRepair) {
+    throw new AppError('Failed to update repair ticket after withdrawal.', 500)
+  }
+
+  queueRepairRefresh(repairRequestId, 'quotation_withdrawn')
+
+  return {
+    quotation: updatedQuotation,
+    repair: updatedRepair,
+    message: 'Quotation withdrawn. You can submit a revised quote when ready.',
   }
 }
 

@@ -9,6 +9,7 @@ import type {
   StartRepairWorkInput,
   SubmitRepairCompletionInput,
 } from '../schemas/repairCompletion.schema.js'
+import { queueRepairRefresh } from '../realtime/realtime.service.js'
 import {
   formatDeviceLabel,
   notifyCustomerReadyForPickup,
@@ -62,6 +63,8 @@ export async function startRepairWork(
     throw new AppError('Failed to start repair work on this ticket.', 500)
   }
 
+  queueRepairRefresh(repairRequestId, 'in_repair')
+
   return {
     repair: updated,
     message: 'Repair work started. Device is now in active bench repair.',
@@ -102,6 +105,8 @@ export async function submitRepairCompletionProof(
     deviceLabel: formatDeviceLabel(repair.brand, repair.modelName),
   })
 
+  queueRepairRefresh(repairRequestId, 'ready_for_pickup')
+
   return {
     repair: updated,
     message: 'Repair completed on bench. Customer notified — device is ready for pickup.',
@@ -133,6 +138,8 @@ export async function confirmRepairPickup(
   if (!updated) {
     throw new AppError('Failed to mark repair as completed.', 500)
   }
+
+  queueRepairRefresh(repairRequestId, 'completed')
 
   return {
     repair: updated,

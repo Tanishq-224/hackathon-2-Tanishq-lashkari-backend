@@ -11,7 +11,9 @@ import {
 } from '../schemas/repair.schema.js'
 import {
   createEstimateSchema,
+  rejectEstimateSchema,
   selectEstimateSchema,
+  updateEstimateSchema,
 } from '../schemas/estimate.schema.js'
 import {
   createQuotationSchema,
@@ -25,8 +27,11 @@ import {
 } from '../services/repair.service.js'
 import {
   getRepairEstimates,
+  rejectVendorEstimate,
   selectVendorEstimate,
   submitVendorEstimate,
+  updateVendorEstimate,
+  withdrawVendorEstimate,
 } from '../services/estimate.service.js'
 import {
   confirmRepairPickup,
@@ -37,6 +42,7 @@ import {
   decideQuotation,
   getQuotationForRepair,
   submitDiagnosticQuotation,
+  withdrawDiagnosticQuotation,
 } from '../services/quotation.service.js'
 import {
   startRepairWorkSchema,
@@ -208,6 +214,95 @@ repairRouter.post(
 )
 
 /**
+ * @description Customer rejects a pending vendor estimate.
+ */
+repairRouter.post(
+  '/:id/estimates/:estimateId/reject',
+  requireRole('customer'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const rawRepairId = req.params.id
+    const repairId = Array.isArray(rawRepairId) ? rawRepairId[0] : rawRepairId
+    const rawEstimateId = req.params.estimateId
+    const estimateId = Array.isArray(rawEstimateId) ? rawEstimateId[0] : rawEstimateId
+    if (!repairId || !estimateId) {
+      throw new AppError('Repair ID and estimate ID are required.', 400)
+    }
+
+    const parsed = rejectEstimateSchema.safeParse(req.body ?? {})
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      throw new AppError(issue?.message ?? 'Invalid reject payload.', 400)
+    }
+
+    const estimate = await rejectVendorEstimate(
+      req.user!,
+      repairId,
+      estimateId,
+      parsed.data.reason,
+    )
+    res.status(200).json({
+      success: true,
+      data: { estimate },
+      message: 'Estimate rejected.',
+    })
+  }),
+)
+
+/**
+ * @description Vendor withdraws their pending preliminary estimate.
+ */
+repairRouter.post(
+  '/:id/estimates/:estimateId/withdraw',
+  requireRole('vendor'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const rawRepairId = req.params.id
+    const repairId = Array.isArray(rawRepairId) ? rawRepairId[0] : rawRepairId
+    const rawEstimateId = req.params.estimateId
+    const estimateId = Array.isArray(rawEstimateId) ? rawEstimateId[0] : rawEstimateId
+    if (!repairId || !estimateId) {
+      throw new AppError('Repair ID and estimate ID are required.', 400)
+    }
+
+    const estimate = await withdrawVendorEstimate(req.user!, repairId, estimateId)
+    res.status(200).json({
+      success: true,
+      data: { estimate },
+      message: 'Estimate withdrawn. You can submit a new proposal when ready.',
+    })
+  }),
+)
+
+/**
+ * @description Vendor updates a pending preliminary estimate.
+ */
+repairRouter.patch(
+  '/:id/estimates/:estimateId',
+  requireRole('vendor'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const rawRepairId = req.params.id
+    const repairId = Array.isArray(rawRepairId) ? rawRepairId[0] : rawRepairId
+    const rawEstimateId = req.params.estimateId
+    const estimateId = Array.isArray(rawEstimateId) ? rawEstimateId[0] : rawEstimateId
+    if (!repairId || !estimateId) {
+      throw new AppError('Repair ID and estimate ID are required.', 400)
+    }
+
+    const parsed = updateEstimateSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      throw new AppError(issue?.message ?? 'Invalid estimate data.', 400)
+    }
+
+    const estimate = await updateVendorEstimate(req.user!, repairId, estimateId, parsed.data)
+    res.status(200).json({
+      success: true,
+      data: { estimate },
+      message: 'Estimate updated successfully.',
+    })
+  }),
+)
+
+/**
  * @description Submit diagnostic inspection findings and itemized quotation (Vendor only).
  */
 repairRouter.post(
@@ -275,6 +370,28 @@ repairRouter.post(
     }
 
     const result = await decideQuotation(req.user!, id, parsed.data)
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: result.message,
+    })
+  }),
+)
+
+/**
+ * @description Vendor withdraws a pending diagnostic quotation.
+ */
+repairRouter.post(
+  '/:id/quotation/withdraw',
+  requireRole('vendor'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const rawId = req.params.id
+    const id = Array.isArray(rawId) ? rawId[0] : rawId
+    if (!id) {
+      throw new AppError('Repair ID is required.', 400)
+    }
+
+    const result = await withdrawDiagnosticQuotation(req.user!, id)
     res.status(200).json({
       success: true,
       data: result,

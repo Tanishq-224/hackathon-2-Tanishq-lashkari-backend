@@ -5,6 +5,10 @@ import {
   findRepairRequestsByCustomer,
   type RepairRecord,
 } from '../repositories/repair.repository.js'
+import {
+  notifyMarketplaceRefresh,
+  queueRepairRefresh,
+} from '../realtime/realtime.service.js'
 import type { CreateRepairInput } from '../schemas/repair.schema.js'
 import { AppError } from '../utils/AppError.js'
 
@@ -19,7 +23,7 @@ export async function createCustomerRepairRequest(
   customerId: string,
   input: CreateRepairInput,
 ): Promise<RepairRecord> {
-  return createRepairRequest({
+  const repair = await createRepairRequest({
     customerId,
     deviceType: input.deviceType,
     brand: input.brand,
@@ -31,6 +35,11 @@ export async function createCustomerRepairRequest(
     estimatedBudgetMin: input.estimatedBudgetMin,
     estimatedBudgetMax: input.estimatedBudgetMax,
   })
+
+  notifyMarketplaceRefresh()
+  queueRepairRefresh(repair.id, 'repair_created')
+
+  return repair
 }
 
 /**

@@ -3,7 +3,7 @@ import mongoose, { Schema, type InferSchemaType } from 'mongoose'
 export const LINE_ITEM_CATEGORIES = ['parts', 'labor', 'consumable', 'other'] as const
 export type LineItemCategory = (typeof LINE_ITEM_CATEGORIES)[number]
 
-export const QUOTATION_STATUSES = ['pending', 'approved', 'rejected'] as const
+export const QUOTATION_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn'] as const
 export type QuotationStatus = (typeof QUOTATION_STATUSES)[number]
 
 const lineItemSchema = new Schema(

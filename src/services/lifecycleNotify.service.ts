@@ -1,3 +1,4 @@
+import { notifyUserInbox, queueRepairRefresh } from '../realtime/realtime.service.js'
 import { findUserById } from '../repositories/auth.repository.js'
 import { createNotification } from '../repositories/notification.repository.js'
 import type { NotificationType } from '../models/Notification.model.js'
@@ -42,6 +43,11 @@ export async function dispatchLifecycleUpdate(payload: LifecyclePayload): Promis
     message: payload.message,
     repairRequestId: payload.repairRequestId,
   })
+
+  notifyUserInbox(payload.userId)
+  if (payload.repairRequestId) {
+    queueRepairRefresh(payload.repairRequestId, 'lifecycle')
+  }
 
   const user = await findUserById(payload.userId)
   if (!user?.email) {

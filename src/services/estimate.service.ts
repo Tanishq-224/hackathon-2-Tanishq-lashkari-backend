@@ -5,6 +5,9 @@ import {
   findEstimateByVendorAndRepair,
   findEstimatesByRepairRequestId,
   markEstimateAccepted,
+  markEstimateDeclinedByCustomer,
+  markEstimateWithdrawn,
+  updateEstimate,
   type EstimateRecord,
 } from '../repositories/estimate.repository.js'
 import {
@@ -15,6 +18,7 @@ import {
   type RepairRecord,
 } from '../repositories/repair.repository.js'
 import type { CreateEstimateInput } from '../schemas/estimate.schema.js'
+import { queueRepairRefresh } from '../realtime/realtime.service.js'
 import {
   formatDeviceLabel,
   notifyCustomerEstimateReceived,
@@ -58,26 +62,29 @@ export async function submitVendorEstimate(
     throw new AppError('This repair request is no longer accepting estimates.', 400)
   }
 
-  // Prevent duplicate submissions from the same vendor
   const existing = await findEstimateByVendorAndRepair(vendor.id, repairRequestId)
-  if (existing) {
+  if (existing && existing.status !== 'withdrawn') {
     throw new AppError(
-      'You have already submitted an estimate for this repair request.',
+      'You have already submitted an estimate for this repair request. Edit or withdraw it from your dashboard.',
       409,
     )
   }
 
-  const estimate = await createEstimate({
-    repairRequestId,
-    vendorId: vendor.id,
-    vendorName: vendor.fullName,
-    vendorEmail: vendor.email,
-    minCost: data.minCost,
-    maxCost: data.maxCost,
-    turnaroundTime: data.turnaroundTime,
-    warrantyMonths: data.warrantyMonths,
-    notes: data.notes,
-  })
+  const writePayload = buildEstimateWritePayload(data)
+
+  const estimate = existing
+    ? await updateEstimate(existing.id, writePayload)
+    : await createEstimate({
+        repairRequestId,
+        vendorId: vendor.id,
+        vendorName: vendor.fullName,
+        vendorEmail: vendor.email,
+        ...writePayload,
+      })
+
+  if (!estimate) {
+    throw new AppError('Failed to save estimate. Please try again.', 500)
+  }
 
   // Advance ticket status to 'estimated' on first estimate
   if (repair.status === 'submitted') {
@@ -90,6 +97,8 @@ export async function submitVendorEstimate(
     vendorName: vendor.fullName,
     deviceLabel: formatDeviceLabel(repair.brand, repair.modelName),
   })
+
+  queueRepairRefresh(repairRequestId, 'estimate_submitted')
 
   return estimate
 }
@@ -155,6 +164,10 @@ export async function selectVendorEstimate(
     throw new AppError('The selected estimate was not found for this repair ticket.', 404)
   }
 
+  if (estimate.status !== 'pending') {
+    throw new AppError('This estimate is no longer available for acceptance.', 400)
+  }
+
   const accepted = await markEstimateAccepted(estimateId, repairRequestId)
   if (!accepted) {
     throw new AppError('Failed to accept estimate. Please try again.', 500)
@@ -178,9 +191,155 @@ export async function selectVendorEstimate(
     deviceLabel: formatDeviceLabel(repair.brand, repair.modelName),
   })
 
+  queueRepairRefresh(repairRequestId, 'estimate_selected')
+
   return {
     repair: updatedRepair,
     acceptedEstimate: accepted,
   }
+}
+
+function buildEstimateWritePayload(data: CreateEstimateInput) {
+  return {
+    minCost: data.minCost,
+    maxCost: data.maxCost,
+    turnaroundTime: data.turnaroundTime,
+    warrantyMonths: data.warrantyMonths,
+    notes: data.notes,
+    componentLines: 'componentLines' in data ? data.componentLines : undefined,
+    labourCost: 'labourCost' in data ? data.labourCost : undefined,
+  }
+}
+
+/**
+ * @description Customer rejects a pending vendor estimate without assigning a technician.
+ * @async
+ */
+export async function rejectVendorEstimate(
+  customer: AuthenticatedUser,
+  repairRequestId: string,
+  estimateId: string,
+  reason?: string,
+): Promise<EstimateRecord> {
+  const repair = await findRepairRequestById(repairRequestId)
+  if (!repair) {
+    throw new AppError('Repair request not found.', 404)
+  }
+
+  if (repair.customerId !== customer.id) {
+    throw new AppError('Only the ticket owner can reject an estimate.', 403)
+  }
+
+  if (repair.status !== 'submitted' && repair.status !== 'estimated') {
+    throw new AppError('Estimates can no longer be rejected on this ticket.', 400)
+  }
+
+  const estimate = await findEstimateById(estimateId)
+  if (!estimate || estimate.repairRequestId !== repairRequestId) {
+    throw new AppError('Estimate not found for this repair ticket.', 404)
+  }
+
+  if (estimate.status !== 'pending') {
+    throw new AppError('Only pending estimates can be rejected.', 400)
+  }
+
+  const updated = await markEstimateDeclinedByCustomer(estimateId, reason)
+  if (!updated) {
+    throw new AppError('Failed to reject estimate.', 500)
+  }
+
+  queueRepairRefresh(repairRequestId, 'estimate_rejected')
+
+  return updated
+}
+
+/**
+ * @description Vendor withdraws their pending preliminary estimate.
+ * @async
+ */
+export async function withdrawVendorEstimate(
+  vendor: AuthenticatedUser,
+  repairRequestId: string,
+  estimateId: string,
+): Promise<EstimateRecord> {
+  const repair = await findRepairRequestById(repairRequestId)
+  if (!repair) {
+    throw new AppError('Repair request not found.', 404)
+  }
+
+  if (repair.status !== 'submitted' && repair.status !== 'estimated') {
+    throw new AppError('This repair request is no longer accepting estimate changes.', 400)
+  }
+
+  const estimate = await findEstimateById(estimateId)
+  if (!estimate || estimate.repairRequestId !== repairRequestId) {
+    throw new AppError('Estimate not found for this repair ticket.', 404)
+  }
+
+  if (estimate.vendorId !== vendor.id && vendor.role !== 'admin') {
+    throw new AppError('You can only withdraw estimates that you submitted.', 403)
+  }
+
+  if (estimate.status !== 'pending') {
+    throw new AppError('Only pending estimates can be withdrawn.', 400)
+  }
+
+  const updated = await markEstimateWithdrawn(estimateId)
+  if (!updated) {
+    throw new AppError('Failed to withdraw estimate.', 500)
+  }
+
+  queueRepairRefresh(repairRequestId, 'estimate_withdrawn')
+
+  return updated
+}
+
+/**
+ * @description Vendor updates a pending preliminary estimate.
+ * @async
+ */
+export async function updateVendorEstimate(
+  vendor: AuthenticatedUser,
+  repairRequestId: string,
+  estimateId: string,
+  data: CreateEstimateInput,
+): Promise<EstimateRecord> {
+  const repair = await findRepairRequestById(repairRequestId)
+  if (!repair) {
+    throw new AppError('Repair request not found.', 404)
+  }
+
+  if (repair.status !== 'submitted' && repair.status !== 'estimated') {
+    throw new AppError('This repair request is no longer accepting estimate changes.', 400)
+  }
+
+  const estimate = await findEstimateById(estimateId)
+  if (!estimate || estimate.repairRequestId !== repairRequestId) {
+    throw new AppError('Estimate not found for this repair ticket.', 404)
+  }
+
+  if (estimate.vendorId !== vendor.id && vendor.role !== 'admin') {
+    throw new AppError('You can only edit estimates that you submitted.', 403)
+  }
+
+  if (estimate.status !== 'pending') {
+    throw new AppError('Only pending estimates can be edited.', 400)
+  }
+
+  const updated = await updateEstimate(estimateId, buildEstimateWritePayload(data))
+  if (!updated) {
+    throw new AppError('Failed to update estimate.', 500)
+  }
+
+  notifyCustomerEstimateReceived({
+    customerId: repair.customerId,
+    repairRequestId,
+    vendorName: vendor.fullName,
+    deviceLabel: formatDeviceLabel(repair.brand, repair.modelName),
+  })
+
+  queueRepairRefresh(repairRequestId, 'estimate_updated')
+
+  return updated
 }
 

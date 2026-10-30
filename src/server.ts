@@ -1,6 +1,9 @@
+import { createServer } from 'node:http'
+
 import { env } from './config/env.js'
 import { createApp } from './app.js'
 import { connectDatabase } from './config/database.js'
+import { initSocketServer } from './realtime/socket.js'
 import { verifyEmailTransport } from './services/email.service.js'
 
 /**
@@ -13,8 +16,10 @@ async function startServer(): Promise<void> {
   await verifyEmailTransport()
 
   const app = createApp()
+  const httpServer = createServer(app)
+  initSocketServer(httpServer)
 
-  app.listen(env.PORT, () => {
+  httpServer.listen(env.PORT, () => {
     console.info(
       `[server] Repairex API listening on http://localhost:${env.PORT}`,
     )

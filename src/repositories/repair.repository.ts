@@ -385,6 +385,40 @@ export async function attachQuotationToRepair(
 }
 
 /**
+ * @description Reverts repair to vendor_selected after a pending quotation is withdrawn.
+ * @async
+ */
+export async function revertRepairAfterQuotationWithdraw(
+  id: string,
+): Promise<RepairRecord | null> {
+  const now = new Date().toISOString()
+
+  if (isMemoryStore()) {
+    const existing = memoryRepairs.get(id)
+    if (!existing) return null
+    const updated: RepairRecord = {
+      ...existing,
+      status: 'vendor_selected',
+      updatedAt: now,
+    }
+    memoryRepairs.set(id, updated)
+    return updated
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return null
+  }
+
+  const doc = await RepairRequestModel.findByIdAndUpdate(
+    id,
+    { status: 'vendor_selected' },
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}
+
+/**
  * @description Updates the repair status and final approved amount following customer quotation decision.
  * @async
  */
