@@ -1,6 +1,7 @@
 import { findUserById } from '../repositories/auth.repository.js'
 import { createNotification } from '../repositories/notification.repository.js'
 import type { NotificationType } from '../models/Notification.model.js'
+import { buildLifecycleEmailHtml } from '../templates/email.template.js'
 import { sendTransactionalEmail } from './email.service.js'
 import { env } from '../config/env.js'
 
@@ -50,11 +51,17 @@ export async function dispatchLifecycleUpdate(payload: LifecyclePayload): Promis
   const link = repairDetailUrl(payload.repairRequestId)
   const text = `${payload.emailText}\n\nOpen in Repairex: ${link}`
 
+  const headline = payload.emailSubject.replace(/^Repairex\s*[—-]\s*/i, '').trim()
+
   await sendTransactionalEmail({
     to: user.email,
     subject: payload.emailSubject,
     text,
-    html: `<p>${payload.emailText.replace(/\n/g, '<br/>')}</p><p><a href="${link}">View in Repairex Dashboard</a></p>`,
+    html: buildLifecycleEmailHtml({
+      headline: headline || payload.title,
+      bodyText: payload.emailText,
+      dashboardUrl: link,
+    }),
   })
 }
 
