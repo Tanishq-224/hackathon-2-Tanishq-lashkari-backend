@@ -1,16 +1,40 @@
+import { env } from '../config/env.js'
 import { getAdminEmailList } from '../config/adminEmails.js'
-import { findUserByEmail, updateUserRole } from '../repositories/auth.repository.js'
+import {
+  findUserByEmail,
+  upsertEnvPlatformAdmin,
+} from '../repositories/auth.repository.js'
+import { hashPassword } from '../utils/password.js'
 
 /**
- * @description Promotes configured ADMIN_EMAILS users to the admin role when they already exist.
+ * @description Provisions platform admin account(s) from ADMIN_EMAILS + ADMIN_PASSWORD.
  * @async
  */
-export async function syncPlatformAdminRoles(): Promise<void> {
+export async function bootstrapPlatformAdminFromEnv(): Promise<void> {
+  const password = process.env.ADMIN_PASSWORD ?? env.ADMIN_PASSWORD
+  if (!password || password.length < 8) {
+    if (env.NODE_ENV === 'production') {
+      throw new Error(
+        '[admin] ADMIN_PASSWORD is required in production to provision the platform admin account.',
+      )
+    }
+    console.warn(
+      '[admin] ADMIN_PASSWORD not set — skipping env admin bootstrap (local/test only).',
+    )
+    return
+  }
+
+  const passwordHash = await hashPassword(password)
+
   for (const email of getAdminEmailList()) {
-    const user = await findUserByEmail(email)
-    if (user && user.role !== 'admin') {
-      await updateUserRole(user.id, 'admin')
-      console.info(`[admin] Promoted ${email} to platform admin.`)
+    await upsertEnvPlatformAdmin({
+      email,
+      passwordHash,
+      fullName: 'Repairex Platform Admin',
+    })
+    const exists = await findUserByEmail(email)
+    if (exists) {
+      console.info(`[admin] Env admin ready for login: ${email}`)
     }
   }
 }

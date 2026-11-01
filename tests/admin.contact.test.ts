@@ -3,12 +3,25 @@ import request from 'supertest'
 
 import { clearMemoryAuthStore } from '../src/repositories/auth.repository.js'
 import { clearMemoryContactStore } from '../src/repositories/contactMessage.repository.js'
+import { bootstrapPlatformAdminFromEnv } from '../src/services/adminBootstrap.service.js'
 
 process.env.NODE_ENV = 'test'
 process.env.CLIENT_URL = 'http://localhost:5173'
 process.env.ADMIN_EMAILS = 'admin@repairex.test'
+process.env.ADMIN_PASSWORD = 'Password123!'
 
 const { createApp } = await import('../src/app.js')
+
+async function loginAsAdmin(app: ReturnType<typeof createApp>) {
+  const login = await request(app)
+    .post('/api/auth/login')
+    .send({ email: 'admin@repairex.test', password: 'Password123!' })
+    .expect(200)
+
+  const cookie = login.headers['set-cookie']?.[0]
+  expect(cookie).toBeDefined()
+  return cookie as string
+}
 
 async function signupVerifyLogin(app: ReturnType<typeof createApp>, email: string) {
   let capturedOtp = ''
@@ -25,7 +38,7 @@ async function signupVerifyLogin(app: ReturnType<typeof createApp>, email: strin
   await request(app)
     .post('/api/auth/signup')
     .send({
-      fullName: 'Platform Admin',
+      fullName: 'Regular Customer',
       email,
       password,
       confirmPassword: password,
@@ -42,18 +55,34 @@ async function signupVerifyLogin(app: ReturnType<typeof createApp>, email: strin
 
   const login = await request(app).post('/api/auth/login').send({ email, password }).expect(200)
 
-  const cookie = login.headers['set-cookie']?.[0]
-  expect(cookie).toBeDefined()
-  return cookie as string
+  return login.headers['set-cookie']?.[0] as string
 }
 
 describe('Admin contact inbox API', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     clearMemoryAuthStore()
     clearMemoryContactStore()
+    await bootstrapPlatformAdminFromEnv()
   })
 
-  it('stores public contact messages and lets admin list and update them', async () => {
+  it('rejects signup for env admin email', async () => {
+    const app = createApp()
+
+    const response = await request(app)
+      .post('/api/auth/signup')
+      .send({
+        fullName: 'Platform Admin',
+        email: 'admin@repairex.test',
+        password: 'Password123!',
+        confirmPassword: 'Password123!',
+        role: 'customer',
+      })
+      .expect(403)
+
+    expect(response.body.message).toMatch(/platform admin login/i)
+  })
+
+  it('stores public contact messages and lets env admin list and update them', async () => {
     const app = createApp()
 
     await request(app)
@@ -66,7 +95,7 @@ describe('Admin contact inbox API', () => {
       })
       .expect(201)
 
-    const adminSession = await signupVerifyLogin(app, 'admin@repairex.test')
+    const adminSession = await loginAsAdmin(app)
 
     const list = await request(app)
       .get('/api/admin/contact-messages')

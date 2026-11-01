@@ -2,7 +2,6 @@ import crypto from 'node:crypto'
 
 import mongoose from 'mongoose'
 
-import { isAdminEmail } from '../config/adminEmails.js'
 import { OtpModel } from '../models/Otp.model.js'
 import { UserModel, type UserDocument } from '../models/User.model.js'
 
@@ -151,9 +150,45 @@ export async function updateUserFullName(
 }
 
 /**
- * @description Updates a user's platform role (admin promotion, etc.).
- * @async
+ * @description Creates or replaces the env-configured platform admin (verified, no OTP signup).
  */
+export async function upsertEnvPlatformAdmin(input: {
+  email: string
+  passwordHash: string
+  fullName: string
+}): Promise<AuthUserRecord> {
+  const normalized = input.email.toLowerCase().trim()
+
+  if (isMemoryAuthStore()) {
+    const existing = memoryUsers.get(normalized)
+    const record: AuthUserRecord = {
+      id: existing?.id ?? crypto.randomUUID(),
+      fullName: input.fullName.trim(),
+      email: normalized,
+      passwordHash: input.passwordHash,
+      role: 'admin',
+      emailVerified: true,
+    }
+    memoryUsers.set(normalized, record)
+    return record
+  }
+
+  const doc = await UserModel.findOneAndUpdate(
+    { email: normalized },
+    {
+      fullName: input.fullName.trim(),
+      email: normalized,
+      passwordHash: input.passwordHash,
+      role: 'admin',
+      emailVerified: true,
+    },
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
+  )
+
+  return fromMongo(doc!)
+}
+
+/** @description Updates a user's platform role. */
 export async function updateUserRole(
   id: string,
   role: UserRole,
@@ -196,15 +231,13 @@ export async function createUser(input: {
 }): Promise<AuthUserRecord> {
   const normalized = input.email.toLowerCase().trim()
 
-  const role: UserRole = isAdminEmail(normalized) ? 'admin' : input.role
-
   if (isMemoryAuthStore()) {
     const record: AuthUserRecord = {
       id: crypto.randomUUID(),
       fullName: input.fullName.trim(),
       email: normalized,
       passwordHash: input.passwordHash,
-      role,
+      role: input.role,
       emailVerified: false,
     }
     memoryUsers.set(normalized, record)
@@ -215,7 +248,7 @@ export async function createUser(input: {
     fullName: input.fullName.trim(),
     email: normalized,
     passwordHash: input.passwordHash,
-    role,
+    role: input.role,
     emailVerified: false,
   })
 

@@ -75,10 +75,12 @@ const envSchema = z
     CLOUDINARY_CLOUD_NAME: z.preprocess(emptyToUndefined, z.string().optional()),
     CLOUDINARY_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
     CLOUDINARY_API_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
-    /** @description Comma-separated emails promoted to platform admin on startup. */
+    /** @description Comma-separated platform admin login emails (env-provisioned, no signup). */
     ADMIN_EMAILS: z
       .string()
       .default('lashkaritanishq176@gmail.com'),
+    /** @description Password for env-provisioned admin account(s). Required in production. */
+    ADMIN_PASSWORD: z.preprocess(emptyToUndefined, z.string().optional()),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {
@@ -107,6 +109,15 @@ const envSchema = z
           path: ['SESSION_SECRET'],
           message:
             'SESSION_SECRET must be set to a secure, random string (min 16 chars) in production.',
+        })
+      }
+
+      if (!data.ADMIN_PASSWORD || data.ADMIN_PASSWORD.length < 8) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ADMIN_PASSWORD'],
+          message:
+            'ADMIN_PASSWORD (min 8 characters) is required in production for the env-provisioned platform admin login.',
         })
       }
     }

@@ -1,3 +1,4 @@
+import { isAdminEmail } from '../config/adminEmails.js'
 import { env } from '../config/env.js'
 import {
   createUser,
@@ -98,6 +99,14 @@ export async function registerUser(input: {
   role: 'customer' | 'vendor'
 }): Promise<{ message: string }> {
   const normalized = input.email.toLowerCase().trim()
+
+  if (isAdminEmail(normalized)) {
+    throw new AppError(
+      'This email is reserved for platform admin login. Sign up with a different email or use Log in with your admin password.',
+      403,
+    )
+  }
+
   const existing = await findUserByEmail(normalized)
 
   if (existing?.emailVerified) {
