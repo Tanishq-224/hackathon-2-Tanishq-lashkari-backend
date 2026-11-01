@@ -5,8 +5,9 @@ import {
   requireRole,
   type AuthenticatedRequest,
 } from '../middleware/authMiddleware.js'
-import type { DeviceType, Urgency } from '../models/RepairRequest.model.js'
+import { marketplaceFeedQuerySchema } from '../schemas/marketplaceQuery.schema.js'
 import { getMarketplaceFeed } from '../services/estimate.service.js'
+import { AppError } from '../utils/AppError.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 
 export const marketplaceRouter = Router()
@@ -21,10 +22,16 @@ marketplaceRouter.use(requireRole('vendor'))
 marketplaceRouter.get(
   '/repairs',
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const deviceType = req.query.deviceType as DeviceType | undefined
-    const urgency = req.query.urgency as Urgency | undefined
+    const parsed = marketplaceFeedQuerySchema.safeParse(req.query)
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0]
+      throw new AppError(
+        `Invalid query: ${firstIssue?.message ?? 'validation failed'}`,
+        400,
+      )
+    }
 
-    const feed = await getMarketplaceFeed({ deviceType, urgency })
+    const feed = await getMarketplaceFeed(parsed.data)
     res.status(200).json({
       success: true,
       data: { requests: feed },

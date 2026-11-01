@@ -1,17 +1,19 @@
 import { z } from 'zod'
 
-/** @description Password rules aligned with the signup UI copy. */
-export const passwordSchema = z
-  .string()
-  .min(8, 'Password must be at least 8 characters.')
-  .regex(/\d/, 'Include at least one number.')
-  .regex(/[^A-Za-z0-9]/, 'Include at least one special character.')
+import {
+  emailField,
+  otpField,
+  passwordField,
+  personNameField,
+} from '../validation/fields.js'
+
+export { passwordField as passwordSchema } from '../validation/fields.js'
 
 export const signupSchema = z
   .object({
-    fullName: z.string().trim().min(2).max(80),
-    email: z.string().trim().email().max(120),
-    password: passwordSchema,
+    fullName: personNameField,
+    email: emailField,
+    password: passwordField,
     confirmPassword: z.string(),
     role: z.enum(['customer', 'vendor']),
   })
@@ -21,25 +23,25 @@ export const signupSchema = z
   })
 
 export const loginSchema = z.object({
-  email: z.string().trim().email().max(120),
+  email: emailField,
   password: z.string().min(1, 'Enter your password.'),
 })
 
 export const verifyOtpSchema = z.object({
-  email: z.string().trim().email().max(120),
-  otp: z.string().trim().length(6, 'Enter the 6-digit code.'),
+  email: emailField,
+  otp: otpField,
   purpose: z.enum(['signup', 'reset']),
 })
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().trim().email().max(120),
+  email: emailField,
 })
 
 export const resetPasswordSchema = z
   .object({
-    email: z.string().trim().email().max(120),
-    otp: z.string().trim().length(6, 'Enter the 6-digit code.'),
-    password: passwordSchema,
+    email: emailField,
+    otp: otpField,
+    password: passwordField,
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -55,11 +57,7 @@ export const googleAuthSchema = z.object({
 })
 
 export const updateProfileSchema = z.object({
-  fullName: z
-    .string()
-    .trim()
-    .min(2, 'Name must be at least 2 characters.')
-    .max(80, 'Name cannot exceed 80 characters.'),
+  fullName: personNameField,
 })
 
 export type SignupInput = z.infer<typeof signupSchema>

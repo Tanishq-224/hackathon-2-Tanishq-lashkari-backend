@@ -1,12 +1,19 @@
 import { z } from 'zod'
 
+import {
+  longTextField,
+  nonNegativeMoneyField,
+  positiveMoneyField,
+  shortLabelField,
+} from '../validation/fields.js'
+
 const estimateComponentLineSchema = z.object({
   component: z
     .string()
     .trim()
     .min(2, 'Component name must be at least 2 characters')
     .max(120),
-  price: z.coerce.number().positive('Each component price must be greater than zero'),
+  price: positiveMoneyField,
   warrantyMonths: z.coerce
     .number()
     .int()
@@ -15,41 +22,25 @@ const estimateComponentLineSchema = z.object({
 })
 
 const legacyEstimateFields = z.object({
-  minCost: z.coerce.number().positive('Minimum cost must be greater than 0'),
-  maxCost: z.coerce.number().positive('Maximum cost must be greater than 0'),
-  turnaroundTime: z
-    .string()
-    .trim()
-    .min(2, 'Turnaround time must be at least 2 characters (e.g. "24 Hours", "1-2 Days")')
-    .max(100),
+  minCost: positiveMoneyField,
+  maxCost: positiveMoneyField,
+  turnaroundTime: shortLabelField(100),
   warrantyMonths: z.coerce
     .number()
     .int()
     .min(0, 'Warranty cannot be negative')
     .max(60, 'Warranty cannot exceed 60 months')
     .default(3),
-  notes: z
-    .string()
-    .trim()
-    .min(5, 'Notes must be at least 5 characters')
-    .max(2000, 'Notes cannot exceed 2000 characters'),
+  notes: longTextField(5, 2000, 'Notes'),
 })
 
 const dynamicEstimateFields = z.object({
   componentLines: z
     .array(estimateComponentLineSchema)
     .min(1, 'Add at least one possible damage component'),
-  labourCost: z.coerce.number().min(0, 'Labour cost cannot be negative'),
-  turnaroundTime: z
-    .string()
-    .trim()
-    .min(2, 'Turnaround time must be at least 2 characters')
-    .max(100),
-  notes: z
-    .string()
-    .trim()
-    .min(5, 'Description must be at least 5 characters')
-    .max(2000, 'Description cannot exceed 2000 characters'),
+  labourCost: nonNegativeMoneyField,
+  turnaroundTime: shortLabelField(100),
+  notes: longTextField(5, 2000, 'Description'),
 })
 
 export const createEstimateSchema = z
@@ -101,7 +92,8 @@ export const rejectEstimateSchema = z.object({
     .string()
     .trim()
     .max(500, 'Reason cannot exceed 500 characters')
-    .optional(),
+    .optional()
+    .transform((value) => (value === '' ? undefined : value)),
 })
 
 export type RejectEstimateInput = z.infer<typeof rejectEstimateSchema>

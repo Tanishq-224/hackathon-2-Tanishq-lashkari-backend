@@ -1,5 +1,12 @@
 import { z } from 'zod'
 
+import {
+  emailField,
+  longTextField,
+  optionalPhoneField,
+  personNameField,
+} from '../validation/fields.js'
+
 /** @description Allowed contact form topic values. */
 export const contactTopics = ['platform', 'vendor', 'other'] as const
 
@@ -7,16 +14,11 @@ export const contactTopics = ['platform', 'vendor', 'other'] as const
  * @description Validates inbound public contact form payloads.
  */
 export const contactMessageSchema = z.object({
-  fullName: z.string().trim().min(2).max(80),
-  email: z.string().trim().email().max(120),
-  phone: z
-    .string()
-    .trim()
-    .max(24)
-    .optional()
-    .transform((value) => (value === '' ? undefined : value)),
+  fullName: personNameField,
+  email: emailField,
+  phone: optionalPhoneField,
   topic: z.enum(contactTopics),
-  message: z.string().trim().min(10).max(2000),
+  message: longTextField(10, 2000, 'Message'),
 })
 
 /** @description Parsed contact message body. */
