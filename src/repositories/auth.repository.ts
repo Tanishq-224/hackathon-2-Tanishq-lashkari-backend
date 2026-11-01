@@ -2,10 +2,11 @@ import crypto from 'node:crypto'
 
 import mongoose from 'mongoose'
 
+import { isAdminEmail } from '../config/adminEmails.js'
 import { OtpModel } from '../models/Otp.model.js'
 import { UserModel, type UserDocument } from '../models/User.model.js'
 
-export type UserRole = 'customer' | 'vendor'
+export type UserRole = 'customer' | 'vendor' | 'admin'
 
 export type AuthUserRecord = {
   id: string
@@ -150,6 +151,38 @@ export async function updateUserFullName(
 }
 
 /**
+ * @description Updates a user's platform role (admin promotion, etc.).
+ * @async
+ */
+export async function updateUserRole(
+  id: string,
+  role: UserRole,
+): Promise<AuthUserRecord | null> {
+  if (isMemoryAuthStore()) {
+    for (const [email, user] of memoryUsers.entries()) {
+      if (user.id === id) {
+        const updated = { ...user, role }
+        memoryUsers.set(email, updated)
+        return updated
+      }
+    }
+    return null
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return null
+  }
+
+  const doc = await UserModel.findByIdAndUpdate(
+    id,
+    { role },
+    { returnDocument: 'after' },
+  )
+
+  return doc ? fromMongo(doc) : null
+}
+
+/**
  * @description Creates a new unverified user record.
  * @async
  * @param {object} input - User fields.
@@ -163,13 +196,15 @@ export async function createUser(input: {
 }): Promise<AuthUserRecord> {
   const normalized = input.email.toLowerCase().trim()
 
+  const role: UserRole = isAdminEmail(normalized) ? 'admin' : input.role
+
   if (isMemoryAuthStore()) {
     const record: AuthUserRecord = {
       id: crypto.randomUUID(),
       fullName: input.fullName.trim(),
       email: normalized,
       passwordHash: input.passwordHash,
-      role: input.role,
+      role,
       emailVerified: false,
     }
     memoryUsers.set(normalized, record)
@@ -180,7 +215,7 @@ export async function createUser(input: {
     fullName: input.fullName.trim(),
     email: normalized,
     passwordHash: input.passwordHash,
-    role: input.role,
+    role,
     emailVerified: false,
   })
 

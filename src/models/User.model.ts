@@ -15,7 +15,7 @@ const userSchema = new Schema(
     googleId: { type: String, sparse: true },
     role: {
       type: String,
-      enum: ['customer', 'vendor'],
+      enum: ['customer', 'vendor', 'admin'],
       required: true,
       default: 'customer',
     },

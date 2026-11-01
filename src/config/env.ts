@@ -75,6 +75,10 @@ const envSchema = z
     CLOUDINARY_CLOUD_NAME: z.preprocess(emptyToUndefined, z.string().optional()),
     CLOUDINARY_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
     CLOUDINARY_API_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
+    /** @description Comma-separated emails promoted to platform admin on startup. */
+    ADMIN_EMAILS: z
+      .string()
+      .default('lashkaritanishq176@gmail.com'),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {
