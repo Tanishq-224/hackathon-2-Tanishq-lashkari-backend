@@ -9,7 +9,6 @@ import {
   deviceBrandField,
   deviceModelField,
   longTextField,
-  nonNegativeMoneyField,
   positiveMoneyField,
 } from '../validation/fields.js'
 
