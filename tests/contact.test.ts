@@ -15,7 +15,7 @@ describe('POST /api/contact', () => {
         fullName: 'Alex Customer',
         email: 'alex@example.com',
         phone: '+91 90000 00000',
-        topic: 'repair-request',
+        topic: 'platform',
         message: 'My laptop battery drains quickly and I need an estimate.',
       })
       .expect(201)
@@ -35,7 +35,7 @@ describe('POST /api/contact', () => {
       .send({
         fullName: 'A',
         email: 'not-an-email',
-        topic: 'repair-request',
+        topic: 'platform',
         message: 'short',
       })
       .expect(400)

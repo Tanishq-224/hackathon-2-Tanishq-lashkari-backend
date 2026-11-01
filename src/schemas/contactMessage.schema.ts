@@ -1,12 +1,7 @@
 import { z } from 'zod'
 
 /** @description Allowed contact form topic values. */
-export const contactTopics = [
-  'repair-request',
-  'vendor',
-  'support',
-  'other',
-] as const
+export const contactTopics = ['platform', 'vendor', 'other'] as const
 
 /**
  * @description Validates inbound public contact form payloads.
